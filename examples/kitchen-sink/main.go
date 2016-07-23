@@ -51,7 +51,7 @@ func addrs2querier(hostnames []string) (gorange.Querier, error) {
 
 func addr2getter(addr string) gogetter.Getter {
 	return &gogetter.Failer{
-		Frequency: 0.9,
+		Frequency: 0.1,
 		Getter: &gogetter.Prefixer{
 			Prefix: fmt.Sprintf("http://%s/range/list?", addr),
 			// NOTE: customize http.Client as desired:
