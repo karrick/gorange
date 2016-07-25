@@ -7,11 +7,6 @@ import (
 	congomap "gopkg.in/karrick/congomap.v1"
 )
 
-// Querier interface
-type Querier interface {
-	Query(string) ([]string, error)
-}
-
 // CachingClient memoizes responses from Querier.
 type CachingClient struct {
 	TTL     time.Duration
@@ -29,9 +24,10 @@ func NewCachingClient(querier Querier, ttl time.Duration) (*CachingClient, error
 	client := &CachingClient{querier: querier, TTL: ttl}
 	var err error
 	client.cache, err = congomap.NewSyncMutexMap(congomap.TTL(ttl), congomap.Lookup(func(url string) (interface{}, error) {
-		// log.Printf("sending query to querier: %q\n", url) // DEBUG
+		// NOTE: send query to underlying querier when cache does not contain response for this URL yet
 		return client.querier.Query(url)
 	}))
+	// NOTE: don't want to send partially instantiated client structure back if there was an error creating the cache
 	if err != nil {
 		return nil, err
 	}

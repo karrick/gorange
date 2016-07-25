@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/karrick/gogetter"
+	gogetter "gopkg.in/karrick/gogetter.v1"
 )
 
 // Client attempts to resolve range queries to list of strings or an error.
@@ -23,14 +23,14 @@ type Client struct {
 // If the response includes a RangeException header, it returns ErrRangeException. If the status
 // code is not okay, it returns ErrStatusNotOK. Finally, if it cannot parse the lines in the
 // response body, it returns ErrParseException.
-func (rc *Client) Query(query string) ([]string, error) {
-	resp, err := rc.Getter.Get(url.QueryEscape(query))
+func (c *Client) Query(query string) ([]string, error) {
+	resp, err := c.Getter.Get(url.QueryEscape(query))
 	if err != nil {
 		return nil, err
 	}
 
 	// got a response from this server, so commit to reading entire body (needed when re-using
-	// connections)
+	// Keep-Alive connections)
 	defer func(iorc io.ReadCloser) {
 		io.Copy(ioutil.Discard, iorc) // so we can reuse connections via Keep-Alive
 		iorc.Close()

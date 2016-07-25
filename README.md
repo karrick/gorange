@@ -35,27 +35,20 @@ response.
 
 ##### Simple
 
-A gogetter.Prefixer is needed to prepend the server name and route to each URL before the URL is
-sent to the underlying http.Client's Get method.
+The easiest way to use gorange is to use a gorange.Configurator instance to create a Querier
+instance, and use that to query range. 
 
 ```Go
     func main() {
-    
-        // create a range client
-    	server := "range.example.com"
-    	prefix := fmt.Sprintf("http://%s/range/list?", server)
-    	client := &gorange.Client{
-    		&gogetter.Prefixer{
-    			Prefix: prefix,
-    			Getter: &http.Client{
-    			// customize if desired
-    			},
-    		},
+    	// create a range querier; could list additional servers or include other options as well
+    	querier, err := gorange.NewQuerier(&gorange.Configurator{Servers: []string{"range.example.com"}})
+    	if err != nil {
+    		fmt.Fprintf(os.Stderr, "%s", err)
+    		os.Exit(1)
     	}
     
-        // use the range client
-    	text := "%%someQuery"
-    	lines, err := client.Query(text)
+    	// use the range querier
+    	lines, err := querier.Query("%someQuery")
     	if err != nil {
     		fmt.Fprintf(os.Stderr, "%s", err)
     		os.Exit(1)
@@ -66,35 +59,80 @@ sent to the underlying http.Client's Get method.
     }
 ```
 
-##### With Caching
+##### Customized
 
-Creating a CachingClient allows you to memoize return values for a specified time. Wrapping a Client
-in a CachingClient is straightforward.
+As described above, the gorange.NewQuerier function allows creating Querier instances that support
+most use-cases: optional round-robin query multiple servers, optional retry of specific errors,
+and optional TTL memoization of query responses. The only requirement is to specify one or more
+servers to query. Leaving any other config option at its zero value creates a viable Querier without
+those optional features.
+
+See the `examples/customized/main.go` for complete example of this code, including constants and
+functions not shown here.
 
 ```Go
     func main() {
-
-        // create a range client as demonstrated above:
-    	server := "range.example.com"
-    	prefix := fmt.Sprintf("http://%s/range/list?", server)
-    	client := &gorange.Client{
-    		&gogetter.Prefixer{
-    			Prefix: prefix,
-    			Getter: &http.Client{
-    			// customize if desired
-    			},
-    		},
+    	servers := []string{"range1.example.com", "range2.example.com", "range3.example.com"}
+    
+    	config := &gorange.Configurator{
+    		Addr2Getter:   addr2Getter,
+    		RetryCallback: retryCallback,
+    		RetryCount:    len(servers),
+    		Servers:       servers,
+    		TTL:           time.Minute,
     	}
-
-        // cachingClient simply wraps the original client
-        cachingClient, err := gorange.NewCachingClient(client, time.Minute)
+    
+    	// create a range querier; could list additional servers or include other options as well
+    	querier, err := gorange.NewQuerier(config)
     	if err != nil {
     		fmt.Fprintf(os.Stderr, "%s", err)
     		os.Exit(1)
     	}
     
-    	text := "%%someQuery"
-    	lines, err := cachingClient.Query(text) // <--- NOTE: using cachingClient here
+    	// use the range querier
+    	lines, err := querier.Query("%someQuery")
+    	if err != nil {
+    		fmt.Fprintf(os.Stderr, "%s", err)
+    		os.Exit(1)
+    	}
+    	for _, line := range lines {
+    		fmt.Println(line)
+    	}
+    }
+```
+
+##### Bit-Twiddling Tweaking Capabilities
+
+While using the gorange.NewQuerier method is fine for most use-cases, there are times when you might
+need to create your own querying pipeline. If you have a Get method that matches the http.Client Get
+method's signature that you'd like to inject in the pipeline, you can build your own Querier by
+composing the functionality you need for your application.
+
+How to do this is illustrated by the gorange.NewQuerier function, but a simple example is shown
+below. Note that the example code simply wraps gogetter.Getter instances around other
+gogetter.Getter instances.
+
+NOTE: A gogetter.Prefixer is needed to prepend the server name and URL route to each URL before the
+URL is sent to the underlying http.Client's Get method.
+
+WARNING: Using http.Client instance without a Timeout will cause resource leaks and may render your
+program inoperative if the client connects to a buggy range server, or over a poor network
+connection.
+
+```Go
+    func main() {
+        // create a range client
+    	server := "range.example.com"
+    	querier := &gorange.Client{
+    		&gogetter.Prefixer{
+    			Prefix: fmt.Sprintf("http://%s/range/list?", server),
+
+    			Getter: &http.Client{Timeout: 5 * time.Second}, // don't forget the Timeout...
+    		},
+    	}
+    
+        // use the range querier
+    	lines, err := querier.Query("%someQuery")
     	if err != nil {
     		fmt.Fprintf(os.Stderr, "%s", err)
     		os.Exit(1)

@@ -2,30 +2,21 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 
-	"github.com/karrick/gogetter"
-	"github.com/karrick/gorange"
+	gorange "gopkg.in/karrick/gorange.v1"
 )
 
 func main() {
-
-	// create a range client
-	server := "range.example.com"
-	prefix := fmt.Sprintf("http://%s/range/list?", server)
-	client := &gorange.Client{
-		&gogetter.Prefixer{
-			Prefix: prefix,
-			Getter: &http.Client{
-			// customize if desired
-			},
-		},
+	// create a range querier; could list additional servers or include other options as well
+	querier, err := gorange.NewQuerier(&gorange.Configurator{Servers: []string{"range.example.com"}})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s", err)
+		os.Exit(1)
 	}
 
-	// use the range client
-	text := "%%someQuery"
-	lines, err := client.Query(text)
+	// use the range querier
+	lines, err := querier.Query("%someQuery")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s", err)
 		os.Exit(1)
