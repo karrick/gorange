@@ -9,7 +9,8 @@ Documentation is available via
 
 ### Description
 
-gorange provides a Client object that allows querying range services on remote hosts.
+gorange provides a `Querier` interface, and a few data structures that implement this interface and
+allows querying range services on remote hosts.
 
 Querying range is a simple HTTP GET call, and Go already provides a steller http library. So why
 wrap it? Well, either you write your own wrapper or use one someone else has written, it's all the
@@ -30,23 +31,34 @@ There are four possible error types this library returns:
 1. ErrParseException is returned by Client.Query when an error occurs while parsing the GET
 response.
 
-
 ### Supported Use Cases
+
+Both the `Client` and `CachingClient` data types implement the `Querier` interface. In fact,
+`CachingClient` is implemented as a simple `Client` with a TTL cache, and the `NewCachingClient`
+function merely wraps the provided `Client`. For a majority of use-cases, you don't need to worry
+about any of this. I recommend ignoring `Client` and `CachingClient` and just think about calling
+the `NewQuerier` function and getting back some opaque data structure instance that exposes the
+`Query` method. See the _Simple_ code example below.
 
 ##### Simple
 
-The easiest way to use gorange is to use a gorange.Configurator instance to create a Querier
-instance, and use that to query range. 
+The easiest way to use gorange is to use a `Configurator` instance to create an object that
+implements the `Querier` interface, and use that to query range.
 
 ```Go
-    func main() {
+    var querier gorange.Querier
+
+    func init() {
     	// create a range querier; could list additional servers or include other options as well
-    	querier, err := gorange.NewQuerier(&gorange.Configurator{Servers: []string{"range.example.com"}})
+    	var err error
+        querier, err = gorange.NewQuerier(&gorange.Configurator{Servers: []string{"range.example.com"}})
     	if err != nil {
-    		fmt.Fprintf(os.Stderr, "%s", err)
+    		fmt.Fprintf(os.Stderr, "%s\n", err)
     		os.Exit(1)
     	}
+    }
     
+    func main() {
     	// use the range querier
     	lines, err := querier.Query("%someQuery")
     	if err != nil {
@@ -61,11 +73,11 @@ instance, and use that to query range.
 
 ##### Customized
 
-As described above, the gorange.NewQuerier function allows creating Querier instances that support
-most use-cases: optional round-robin query multiple servers, optional retry of specific errors,
-and optional TTL memoization of query responses. The only requirement is to specify one or more
-servers to query. Leaving any other config option at its zero value creates a viable Querier without
-those optional features.
+As described above, the `NewQuerier` function allows creating objects that implement `Querier` and
+supports most use-cases: optional round-robin query of multiple servers, optional retry of specific
+errors, and optional TTL memoization of query responses. The only requirement is to specify one or
+more servers to query. Leaving any other config option at its zero value creates a viable Querier
+without those optional features.
 
 See the `examples/customized/main.go` for complete example of this code, including constants and
 functions not shown here.
