@@ -9,7 +9,7 @@ import (
 
 // CachingClient memoizes responses from Querier.
 type CachingClient struct {
-	TTL     time.Duration
+	ttl     time.Duration
 	cache   congomap.Congomap
 	querier Querier
 }
@@ -21,7 +21,7 @@ func NewCachingClient(querier Querier, ttl time.Duration) (*CachingClient, error
 	if ttl < 0 {
 		return nil, fmt.Errorf("cannot create CachingClient with negative TTL: %v", ttl)
 	}
-	client := &CachingClient{querier: querier, TTL: ttl}
+	client := &CachingClient{querier: querier, ttl: ttl}
 	var err error
 	client.cache, err = congomap.NewSyncMutexMap(congomap.TTL(ttl), congomap.Lookup(func(url string) (interface{}, error) {
 		// NOTE: send query to underlying querier when cache does not contain response for this URL yet

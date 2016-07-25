@@ -16,6 +16,7 @@ const (
 	keepAliveDuration  = 10 * time.Minute
 	maxIdleConnections = 5
 	queryTimeout       = 5 * time.Second
+	responseTTL        = 5 * time.Minute
 )
 
 func main() {
@@ -26,10 +27,10 @@ func main() {
 		RetryCallback: retryCallback,
 		RetryCount:    len(servers),
 		Servers:       servers,
-		TTL:           time.Minute,
+		TTL:           responseTTL,
 	}
 
-	// create a range querier; could list additional servers or include other options as well
+	// create a range querier
 	querier, err := gorange.NewQuerier(config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s", err)
@@ -69,7 +70,7 @@ func addr2Getter(addr string) gogetter.Getter {
 
 func retryCallback(err error) bool {
 	if nerr, ok := err.(net.Error); ok {
-		if nerr.Temporary() {
+		if nerr.Temporary() || nerr.Timeout() {
 			return true
 		}
 	}
