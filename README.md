@@ -115,20 +115,20 @@ functions not shown here.
 
 ##### Bit-Twiddling Tweaking Capabilities
 
-While using the gorange.NewQuerier method is fine for most use-cases, there are times when you might
-need to create your own querying pipeline. If you have a Get method that matches the http.Client Get
-method's signature that you'd like to inject in the pipeline, you can build your own Querier by
-composing the functionality you need for your application.
+While using the `NewQuerier` method is fine for most use-cases, there are times when you might need
+to create your own querying pipeline. If you have a `Get` method that matches the `http.Client`
+`Get` method's signature that you'd like to inject in the pipeline, you can build your own Querier
+by composing the functionality you need for your application.
 
-How to do this is illustrated by the gorange.NewQuerier function, but a simple example is shown
-below. Note that the example code simply wraps gogetter.Getter instances around other
-gogetter.Getter instances.
+How to do this is illustrated by the `NewQuerier` function in this library, but a simple example is
+shown below. Note that the example code simply wraps `gogetter.Getter` instances around other
+`gogetter.Getter` instances.
 
-NOTE: A gogetter.Prefixer is needed to prepend the server name and URL route to each URL before the
-URL is sent to the underlying http.Client's Get method.
+NOTE: A `gogetter.Prefixer` is needed to prepend the server name and URL route to each URL before the
+URL is sent to the underlying `http.Client`'s `Get` method.
 
-WARNING: Using http.Client instance without a Timeout will cause resource leaks and may render your
-program inoperative if the client connects to a buggy range server, or over a poor network
+WARNING: Using `http.Client` instance without a `Timeout` will cause resource leaks and may render
+your program inoperative if the client connects to a buggy range server, or over a poor network
 connection.
 
 ```Go
