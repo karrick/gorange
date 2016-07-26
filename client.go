@@ -12,7 +12,7 @@ import (
 	gogetter "gopkg.in/karrick/gogetter.v1"
 )
 
-// Client attempts to resolve range queries to list of strings or an error.
+// Client attempts to resolve range queries to a list of strings or an error.
 type Client struct {
 	Getter gogetter.Getter
 }
@@ -23,6 +23,16 @@ type Client struct {
 // If the response includes a RangeException header, it returns ErrRangeException. If the status
 // code is not okay, it returns ErrStatusNotOK. Finally, if it cannot parse the lines in the
 // response body, it returns ErrParseException.
+//
+//	// use the range querier
+//	lines, err := querier.Query("%someQuery")
+//	if err != nil {
+//		fmt.Fprintf(os.Stderr, "%s", err)
+//		os.Exit(1)
+//	}
+//	for _, line := range lines {
+//		fmt.Println(line)
+//	}
 func (c *Client) Query(query string) ([]string, error) {
 	resp, err := c.Getter.Get(url.QueryEscape(query))
 	if err != nil {

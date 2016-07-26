@@ -10,7 +10,7 @@ import (
 
 const DefaultQueryTimeout = 3 * time.Second
 
-// Querier interface
+// Querier interface is minimal library abstraction for submitting a query and receiving a response.
 type Querier interface {
 	Query(string) ([]string, error)
 }
@@ -29,6 +29,23 @@ type Configurator struct {
 // Configurator not only provides a way of listing one or more range servers, but also allows
 // specification of optional retry-on-failure feature and optional TTL cache that memoizes range
 // query responses.
+//
+//    func main() {
+//		servers := []string{"range1.example.com", "range2.example.com", "range3.example.com"}
+//
+//		config := &gorange.Configurator{
+//			RetryCount:    len(servers),
+//			Servers:       servers,
+//			TTL:           5 * time.Minute,
+//		}
+//
+//		// create a range querier; could list additional servers or include other options as well
+//		querier, err := gorange.NewQuerier(config)
+//		if err != nil {
+//			fmt.Fprintf(os.Stderr, "%s", err)
+//			os.Exit(1)
+//		}
+//    }
 func NewQuerier(config *Configurator) (Querier, error) {
 	if len(config.Servers) == 0 {
 		return nil, fmt.Errorf("cannot create Querier without at least one range server address")

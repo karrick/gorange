@@ -7,7 +7,7 @@ import (
 	congomap "gopkg.in/karrick/congomap.v1"
 )
 
-// CachingClient memoizes responses from Querier.
+// CachingClient memoizes responses from a Querier.
 type CachingClient struct {
 	ttl     time.Duration
 	cache   congomap.Congomap
