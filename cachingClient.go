@@ -23,7 +23,7 @@ func NewCachingClient(querier Querier, ttl time.Duration) (*CachingClient, error
 	}
 	client := &CachingClient{querier: querier, ttl: ttl}
 	var err error
-	client.cache, err = congomap.NewSyncMutexShardedMap(congomap.TTL(ttl), congomap.Lookup(func(url string) (interface{}, error) {
+	client.cache, err = congomap.NewTwoLevelMap(congomap.TTL(ttl), congomap.Lookup(func(url string) (interface{}, error) {
 		// NOTE: send query to underlying querier when cache does not contain response for this URL yet
 		return client.querier.Query(url)
 	}))
