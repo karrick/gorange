@@ -46,6 +46,12 @@ The easiest way to use gorange is to use a `Configurator` instance to create an 
 implements the `Querier` interface, and use that to query range.
 
 ```Go
+    package main
+    
+    import (
+        gorange "gopkg.in/karrick/gorange.v2"
+    )
+
     var querier gorange.Querier
 
     func init() {
@@ -83,6 +89,12 @@ See the `examples/customized/main.go` for complete example of this code, includi
 functions not shown here.
 
 ```Go
+    package main
+    
+    import (
+        gorange "gopkg.in/karrick/gorange.v2"
+    )
+
     func main() {
     	servers := []string{"range1.example.com", "range2.example.com", "range3.example.com"}
     
