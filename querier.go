@@ -5,7 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	gogetter "gopkg.in/karrick/gogetter.v1"
+	// gogetter "gopkg.in/karrick/gogetter.v1"
+	"github.com/karrick/gogetter"
 )
 
 const DefaultQueryTimeout = 3 * time.Second
@@ -18,11 +19,24 @@ type Querier interface {
 // Configurator provides a way to list the range server addresses, and a way to override defaults
 // when creating new http.Client instances.
 type Configurator struct {
-	Addr2Getter   func(string) gogetter.Getter // Addr2Getter converts a range server address to a Getter, ideally a customized http.Client object with a Timeout set. Leave nil to create default gogetter.Getter with DefaultQueryTimeout.
-	RetryCallback func(error) bool             // RetryCallback is predicate function that tests whether query should be retried for a given error. Leave nil to retry all errors.
-	RetryCount    int                          // RetryCount is number of query retries to be issued if query returns error. Leave 0 to never retry query errors.
-	Servers       []string                     // Servers is slice of range server address strings. Must contain at least one string.
-	TTL           time.Duration                // TTL is duration of time to cache query responses. Leave 0 to not cache responses.
+	// Addr2Getter converts a range server address to a Getter, ideally a customized http.Client
+	// object with a Timeout set. Leave nil to create default gogetter.Getter with
+	// DefaultQueryTimeout.
+	Addr2Getter func(string) gogetter.Getter
+
+	// RetryCallback is predicate function that tests whether query should be retried for a
+	// given error. Leave nil to retry all errors.
+	RetryCallback func(error) bool
+
+	// RetryCount is number of query retries to be issued if query returns error. Leave 0 to
+	// never retry query errors.
+	RetryCount int
+
+	// Servers is slice of range server address strings. Must contain at least one string.
+	Servers []string
+
+	// TTL is duration of time to cache query responses. Leave 0 to not cache responses.
+	TTL time.Duration
 }
 
 // NewQuerier returns a new instance that sends queries to one or more range servers. The provided
@@ -61,11 +75,11 @@ func NewQuerier(config *Configurator) (Querier, error) {
 	if len(config.Servers) == 1 {
 		hg = addr2getter(config.Servers[0])
 	} else {
-		rr := &gogetter.RoundRobin{}
+		var hostGetters []gogetter.Getter
 		for _, hostname := range config.Servers {
-			rr.Getters = append(rr.Getters, addr2getter(hostname))
+			hostGetters = append(hostGetters, addr2getter(hostname))
 		}
-		hg = rr
+		hg = gogetter.NewRoundRobin(hostGetters)
 	}
 
 	if config.RetryCount > 0 {
@@ -78,7 +92,7 @@ func NewQuerier(config *Configurator) (Querier, error) {
 
 	q := &Client{hg}
 
-	if config.TTL > time.Duration(0) {
+	if config.TTL > 0 {
 		return NewCachingClient(q, config.TTL)
 	}
 
