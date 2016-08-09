@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	gogetter "gopkg.in/karrick/gogetter.v1"
+	gogetter "gopkg.in/karrick/gogetter.v2"
 )
 
 // Client attempts to resolve range queries to a list of strings or an error.

@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	gogetter "gopkg.in/karrick/gogetter.v1"
-	gorange "gopkg.in/karrick/gorange.v1"
+	gogetter "gopkg.in/karrick/gogetter.v2"
+	gorange "gopkg.in/karrick/gorange.v2"
 )
 
 const (

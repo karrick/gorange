@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	gogetter "gopkg.in/karrick/gogetter.v1"
+	gogetter "gopkg.in/karrick/gogetter.v2"
 )
 
 const DefaultQueryTimeout = 3 * time.Second
