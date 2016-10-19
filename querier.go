@@ -10,7 +10,8 @@ import (
 
 const DefaultQueryTimeout = 3 * time.Second
 
-// Querier interface is minimal library abstraction for submitting a query and receiving a response.
+// Querier is the interface implemented by an object that allows key-value lookups, where keys are
+// strings and values are slices of strings.
 type Querier interface {
 	Query(string) ([]string, error)
 }
