@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	gorange "gopkg.in/karrick/gorange.v1"
+	"github.com/karrick/gorange"
 )
 
 var querier gorange.Querier

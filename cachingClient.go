@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	congomap "gopkg.in/karrick/congomap.v2"
+	"github.com/karrick/congomap"
 )
 
 // CachingClient memoizes responses from a Querier.

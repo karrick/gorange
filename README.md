@@ -49,7 +49,7 @@ implements the `Querier` interface, and use that to query range.
     package main
     
     import (
-        gorange "gopkg.in/karrick/gorange.v2"
+        "github.com/karrick/gorange"
     )
 
     var querier gorange.Querier
@@ -92,7 +92,7 @@ functions not shown here.
     package main
     
     import (
-        gorange "gopkg.in/karrick/gorange.v2"
+        "github.com/karrick/gorange"
     )
 
     func main() {

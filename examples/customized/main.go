@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	gogetter "gopkg.in/karrick/gogetter.v2"
-	gorange "gopkg.in/karrick/gorange.v2"
+	"github.com/karrick/gogetter"
+	"github.com/karrick/gorange"
 )
 
 const (
