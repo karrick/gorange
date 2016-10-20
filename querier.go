@@ -34,6 +34,10 @@ type Configurator struct {
 	// never retry query errors.
 	RetryCount int
 
+	// RetryPause is the amount of time to wait before retrying the query with the underlying
+	// Getter.
+	RetryPause time.Duration
+
 	// Servers is slice of range server address strings. Must contain at least one string.
 	Servers []string
 
@@ -51,6 +55,7 @@ type Configurator struct {
 //
 //		config := &gorange.Configurator{
 //			RetryCount:    len(servers),
+//			RetryPause:    5 * time.Second,
 //			Servers:       servers,
 //			TTL:           5 * time.Minute,
 //		}
@@ -89,6 +94,7 @@ func NewQuerier(config *Configurator) (Querier, error) {
 			Getter:        hg,
 			RetryCallback: config.RetryCallback,
 			RetryCount:    config.RetryCount,
+			RetryPause:    config.RetryPause,
 		}
 	}
 
