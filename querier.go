@@ -8,7 +8,9 @@ import (
 	"github.com/karrick/gogetter"
 )
 
-const DefaultQueryTimeout = 3 * time.Second
+// DefaultQueryTimeout is the default duration a query will remain in flight prior to automatic
+// cancellation.
+const DefaultQueryTimeout = 15 * time.Second
 
 // Querier is the interface implemented by an object that allows key-value lookups, where keys are
 // strings and values are slices of strings.
@@ -103,9 +105,6 @@ func defaultAddr2Getter(addr string) gogetter.Getter {
 	return &gogetter.Prefixer{
 		Prefix: fmt.Sprintf("http://%s/range/list?", addr),
 		Getter: &http.Client{
-			// WARNING: Not having timeout will cause resource leakage if library connects to buggy range server, or a range server over a poor network connection.
-			Timeout: time.Duration(DefaultQueryTimeout),
-
 			// Transport: &http.Transport{
 			// 	Dial: (&net.Dialer{
 			// 		Timeout:   dialTimeout,
@@ -113,6 +112,9 @@ func defaultAddr2Getter(addr string) gogetter.Getter {
 			// 	}).Dial,
 			// 	MaxIdleConnsPerHost: int(maxConns),
 			// },
+
+			// WARNING: Not having timeout will cause resource leakage if library connects to buggy range server, or a range server over a poor network connection.
+			Timeout: time.Duration(DefaultQueryTimeout),
 		},
 	}
 }
