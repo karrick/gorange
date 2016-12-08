@@ -9,29 +9,24 @@ import (
 
 // CachingClient memoizes responses from a Querier.
 type CachingClient struct {
-	ttl     time.Duration
-	cache   congomap.Congomap
-	querier Querier
+	cache congomap.Congomap
 }
 
 // NewCachingClient returns CachingClient that attempts to respond to Query methods by consulting
 // its TTL cache, then directing the call to the underlying Querier if a valid response is not
 // stored.
-func NewCachingClient(querier Querier, ttl time.Duration) (*CachingClient, error) {
+func newCachingClient(querier Querier, ttl time.Duration) (*CachingClient, error) {
 	if ttl < 0 {
 		return nil, fmt.Errorf("cannot create CachingClient with negative TTL: %v", ttl)
 	}
-	client := &CachingClient{querier: querier, ttl: ttl}
-	var err error
-	client.cache, err = congomap.NewTwoLevelMap(congomap.TTL(ttl), congomap.Lookup(func(url string) (interface{}, error) {
-		// NOTE: send query to underlying querier when cache does not contain response for this URL yet
-		return client.querier.Query(url)
+	cache, err := congomap.NewTwoLevelMap(congomap.TTL(ttl), congomap.Lookup(func(url string) (interface{}, error) {
+		// NOTE: send query to querier when cache does not contain response for this URL yet
+		return querier.Query(url)
 	}))
-	// NOTE: don't want to send partially instantiated client structure back if there was an error creating the cache
 	if err != nil {
 		return nil, err
 	}
-	return client, nil
+	return &CachingClient{cache}, nil
 }
 
 // Query returns the response of the query, first checking in the TTL cache, then by actually

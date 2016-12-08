@@ -114,7 +114,7 @@ func NewQuerier(config *Configurator) (Querier, error) {
 	q := &Client{hg}
 
 	if config.TTL > 0 {
-		return NewCachingClient(q, config.TTL)
+		return newCachingClient(q, config.TTL)
 	}
 
 	return q, nil
