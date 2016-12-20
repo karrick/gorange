@@ -20,14 +20,13 @@ const (
 )
 
 func main() {
-	servers := []string{"range1.example.com", "range2.example.com", "range3.example.com"}
+	servers := []string{"range1.example.com", "range.corp.linkedin.com", "range3.example.com"}
 
 	config := &gorange.Configurator{
-		Addr2Getter:   addr2Getter,
-		RetryCallback: retryCallback,
-		RetryCount:    len(servers),
-		Servers:       servers,
-		TTL:           responseTTL,
+		Addr2Getter: addr2Getter,
+		RetryCount:  len(servers),
+		Servers:     servers,
+		TTL:         responseTTL,
 	}
 
 	// create a range querier
@@ -38,7 +37,7 @@ func main() {
 	}
 
 	// use the range querier
-	lines, err := querier.Query("%someQuery")
+	lines, err := querier.Query("%version")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s", err)
 		os.Exit(1)
@@ -66,13 +65,4 @@ func addr2Getter(addr string) gogetter.Getter {
 			},
 		},
 	}
-}
-
-func retryCallback(err error) bool {
-	if nerr, ok := err.(net.Error); ok {
-		if nerr.Temporary() || nerr.Timeout() {
-			return true
-		}
-	}
-	return false
 }

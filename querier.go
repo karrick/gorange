@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/karrick/gogetter"
@@ -112,6 +113,9 @@ func NewQuerier(config *Configurator) (Querier, error) {
 	}
 
 	if config.RetryCount > 0 {
+		if config.RetryCallback == nil {
+			config.RetryCallback = makeRetryCallback(len(config.Servers))
+		}
 		hg = &gogetter.Retrier{
 			Getter:        hg,
 			RetryCallback: config.RetryCallback,
@@ -146,5 +150,28 @@ func defaultAddr2Getter(addr string) gogetter.Getter {
 				MaxIdleConnsPerHost: int(DefaultMaxIdleConnsPerHost),
 			},
 		},
+	}
+}
+
+func makeRetryCallback(count int) func(error) bool {
+	return func(err error) bool {
+		switch err1 := err.(type) {
+		case net.Error:
+			if err1.Temporary() || err1.Timeout() {
+				return true
+			}
+			switch err2 := err.(type) {
+			case *url.Error:
+				switch err3 := err2.Err.(type) {
+				case *net.OpError:
+					switch err3.Err.(type) {
+					case *net.DNSError:
+						return count > 1
+					}
+				}
+			}
+			return false
+		}
+		return false
 	}
 }
