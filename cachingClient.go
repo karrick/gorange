@@ -61,3 +61,8 @@ func (c *CachingClient) Query(query string) ([]string, error) {
 	}
 	return qr.value, nil
 }
+
+// Close releases resources used by the CachingClient instance.
+func (c *CachingClient) Close() error {
+	return c.cache.Close()
+}
