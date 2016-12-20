@@ -54,8 +54,17 @@ type Configurator struct {
 	// Servers is slice of range server address strings. Must contain at least one string.
 	Servers []string
 
-	// TTL is duration of time to cache query responses. Leave 0 to not cache responses.
+	// TTL is duration of time to cache query responses. Leave 0 to not cache responses. When a
+	// value is older than its TTL, it becomes stale. When a key is queried for a value that is
+	// stale, an asynchronous routine attempts to lookup the new value, while the existing value
+	// is immediately returned to the user.
 	TTL time.Duration
+
+	// TTE is duration of time before cached response is no longer able to be served, even if
+	// attempts to fetch new value repeatedly fail. This value should be large if your
+	// application needs to still operate even when range servers are down. A zero-value for
+	// this implies that values never expire and can continue to be served.
+	TTE time.Duration
 }
 
 // NewQuerier returns a new instance that sends queries to one or more range servers. The provided
@@ -113,8 +122,8 @@ func NewQuerier(config *Configurator) (Querier, error) {
 
 	q := &Client{hg}
 
-	if config.TTL > 0 {
-		return newCachingClient(q, config.TTL)
+	if config.TTL > 0 || config.TTE > 0 {
+		return newCachingClient(q, config.TTL, config.TTE)
 	}
 
 	return q, nil
