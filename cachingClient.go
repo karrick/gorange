@@ -14,7 +14,6 @@ type CachingClient struct {
 
 type queryResult struct {
 	value        []string
-	err          error
 	lastResponse time.Time
 }
 
