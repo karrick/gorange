@@ -17,6 +17,11 @@ type Client struct {
 	Getter gogetter.Getter
 }
 
+// Close returns nil error.
+func (c *Client) Close() error {
+	return nil
+}
+
 // Query sends the specified query string to the Client's Getter, and converts a non-error result
 // into a list of strings.
 //
