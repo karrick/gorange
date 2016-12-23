@@ -13,9 +13,7 @@ func main() {
 	// create a range querier; could list additional servers or include other options as well
 	querier, err := gorange.NewQuerier(&gorange.Configurator{
 		CheckVersionPeriodicity: 15 * time.Second,
-		TTL:     30 * time.Second,
-		TTE:     2 * time.Hour,
-		Servers: []string{"range.example.com"},
+		Servers:                 []string{"range.example.com"},
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
