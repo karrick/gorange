@@ -2,7 +2,6 @@ package gorange
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 	"sync"
 	"time"
@@ -180,13 +179,13 @@ func (c *CachingClient) refreshBefore(cutoff time.Time) {
 	// map's key-value pairs. We'll use that to our advantage below.
 	c.cache.Range(func(key string, tv *goswarm.TimedValue) {
 		if tv.Err != nil {
-			log.Printf("deleting result that is an error: %q", key)
+			// log.Printf("deleting result that is an error: %q", key)
 			c.cache.Delete(key)
 		} else if c.getLastRequestTime(key).Before(cutoff) {
-			log.Printf("dropping because last requested quite a while ago: %q", key)
+			// log.Printf("dropping because last requested quite a while ago: %q", key)
 			c.cache.Delete(key)
 		} else {
-			log.Printf("enqueue request to update: %q", key)
+			// log.Printf("enqueue request to update: %q", key)
 			toRefresh <- key
 		}
 	})
