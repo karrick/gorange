@@ -148,18 +148,33 @@ func NewQuerier(config *Configurator) (Querier, error) {
 
 	q := &Client{hg}
 
-	if config.TTL > 0 || config.TTE > 0 || config.CheckVersionPeriodicity > 0 {
-		// There is no point in having the underlying cache run its GC if results never go
-		// stale.
+	if config.CheckVersionPeriodicity > 0 || config.TTE > 0 || config.TTL > 0 {
+		expiry := config.TTE
+		stale := config.TTL
+
+		// If using %version, we don't need to worry about having goswarm refreshing stale
+		// tuples, because values never actually go stale until the version is updated.
+		if config.CheckVersionPeriodicity > 0 {
+			stale = 0
+
+			// Unless we have expiry on the data values, they will persist until %version
+			// changes, so make sure one exists to prevent heap gluttony.
+			if expiry == 0 {
+				expiry = 4 * time.Hour
+			}
+		}
+
+		// There is no point in having the underlying cache run its GC if results never
+		// expire.
 		var gcPeriodicity time.Duration
-		if config.TTE > 0 {
-			gcPeriodicity = time.Hour
+		if expiry > 0 {
+			gcPeriodicity = expiry
 		}
 
 		return newCachingClient(&cachingClientConfig{
 			querier:                 q,
-			stale:                   config.TTL, // 5 * time.Minute,
-			expiry:                  config.TTE, // 24 * time.Hour,
+			stale:                   stale,
+			expiry:                  expiry,
 			checkVersionPeriodicity: config.CheckVersionPeriodicity,
 			gcPeriodicity:           gcPeriodicity,
 		})
