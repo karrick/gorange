@@ -175,7 +175,7 @@ func (c *CachingClient) refreshBefore(cutoff time.Time) {
 		refresher.Done()
 	}()
 
-	// Go maps and goswarm.Sample's Range method allows deleting keys while iterating over the
+	// Go maps and goswarm.Simple's Range method allows deleting keys while iterating over the
 	// map's key-value pairs. We'll use that to our advantage below.
 	c.cache.Range(func(key string, tv *goswarm.TimedValue) {
 		if tv.Err != nil {
