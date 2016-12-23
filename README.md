@@ -49,30 +49,39 @@ implements the `Querier` interface, and use that to query range.
     package main
     
     import (
-        "github.com/karrick/gorange"
+    	"bufio"
+    	"fmt"
+    	"os"
+    	"time"
+    
+    	"github.com/karrick/gorange"
     )
-
-    var querier gorange.Querier
-
-    func init() {
+    
+    func main() {
     	// create a range querier; could list additional servers or include other options as well
-    	var err error
-        querier, err = gorange.NewQuerier(&gorange.Configurator{Servers: []string{"range.example.com"}})
+    	querier, err := gorange.NewQuerier(&gorange.Configurator{
+    		Servers:                 []string{"range.example.com"},
+    	})
     	if err != nil {
     		fmt.Fprintf(os.Stderr, "%s\n", err)
     		os.Exit(1)
     	}
-    }
     
-    func main() {
-    	// use the range querier
-    	lines, err := querier.Query("%someQuery")
-    	if err != nil {
-    		fmt.Fprintf(os.Stderr, "%s", err)
-    		os.Exit(1)
+    	// main loop
+    	fmt.Printf("> ")
+    	scanner := bufio.NewScanner(os.Stdin)
+    	for scanner.Scan() {
+    		text := scanner.Text()
+    		hosts, err := querier.Query(text)
+    		if err != nil {
+    			fmt.Fprintf(os.Stderr, "%s\n", err)
+    			fmt.Printf("> ")
+    			continue
+    		}
+    		fmt.Printf("%s\n> ", hosts)
     	}
-    	for _, line := range lines {
-    		fmt.Println(line)
+    	if err := scanner.Err(); err != nil {
+    		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
     	}
     }
 ```
@@ -96,31 +105,37 @@ functions not shown here.
     )
 
     func main() {
-    	servers := []string{"range1.example.com", "range2.example.com", "range3.example.com"}
+    	servers := []string{"range1.example.com", "range.corp.linkedin.com", "range3.example.com"}
     
     	config := &gorange.Configurator{
-    		Addr2Getter:   addr2Getter,
-    		RetryCallback: retryCallback,
-    		RetryCount:    len(servers),
-    		Servers:       servers,
-    		TTL:           time.Minute,
+    		Addr2Getter:             addr2Getter,
+    		RetryCount:              len(servers),
+    		Servers:                 servers,
+    		CheckVersionPeriodicity: 15 * time.Second,
     	}
     
-    	// create a range querier; could list additional servers or include other options as well
+    	// create a range querier
     	querier, err := gorange.NewQuerier(config)
     	if err != nil {
     		fmt.Fprintf(os.Stderr, "%s", err)
     		os.Exit(1)
     	}
     
-    	// use the range querier
-    	lines, err := querier.Query("%someQuery")
-    	if err != nil {
-    		fmt.Fprintf(os.Stderr, "%s", err)
-    		os.Exit(1)
+    	// main loop
+    	fmt.Printf("> ")
+    	scanner := bufio.NewScanner(os.Stdin)
+    	for scanner.Scan() {
+    		text := scanner.Text()
+    		hosts, err := querier.Query(text)
+    		if err != nil {
+    			fmt.Fprintf(os.Stderr, "%s\n", err)
+    			fmt.Printf("> ")
+    			continue
+    		}
+    		fmt.Printf("%s\n> ", hosts)
     	}
-    	for _, line := range lines {
-    		fmt.Println(line)
+    	if err := scanner.Err(); err != nil {
+    		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
     	}
     }
 ```

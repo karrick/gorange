@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"net/http"
@@ -23,10 +24,10 @@ func main() {
 	servers := []string{"range1.example.com", "range.corp.linkedin.com", "range3.example.com"}
 
 	config := &gorange.Configurator{
-		Addr2Getter: addr2Getter,
-		RetryCount:  len(servers),
-		Servers:     servers,
-		TTL:         responseTTL,
+		Addr2Getter:             addr2Getter,
+		RetryCount:              len(servers),
+		Servers:                 servers,
+		CheckVersionPeriodicity: 15 * time.Second,
 	}
 
 	// create a range querier
@@ -36,14 +37,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	// use the range querier
-	lines, err := querier.Query("%version")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s", err)
-		os.Exit(1)
+	// main loop
+	fmt.Printf("> ")
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		text := scanner.Text()
+		hosts, err := querier.Query(text)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+			fmt.Printf("> ")
+			continue
+		}
+		fmt.Printf("%s\n> ", hosts)
 	}
-	for _, line := range lines {
-		fmt.Println(line)
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 	}
 }
 
