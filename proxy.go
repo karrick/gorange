@@ -29,11 +29,12 @@ func Proxy(config ProxyConfig) error {
 	if err != nil {
 		return err
 	}
-	http.HandleFunc("/range/list", makeGzipHandler(makeRangeHandler(querier)))
+	http.HandleFunc("/range/expand", makeGzipHandler(makeExpandHandler(querier)))
+	http.HandleFunc("/range/list", makeGzipHandler(makeListHandler(querier)))
 	return http.ListenAndServe(fmt.Sprintf(":%d", config.Port), nil)
 }
 
-func makeRangeHandler(querier Querier) func(http.ResponseWriter, *http.Request) {
+func makeExpandHandler(querier Querier) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			logHttpError(&w, r, errors.New(r.Method), http.StatusMethodNotAllowed)
@@ -43,13 +44,35 @@ func makeRangeHandler(querier Querier) func(http.ResponseWriter, *http.Request) 
 		if err != nil {
 			logHttpError(&w, r, fmt.Errorf("cannot decode query: %s", err), http.StatusBadRequest)
 		}
-		response, err := querier.Query(query)
+		result, err := querier.Expand(query)
 		if err != nil {
 			logHttpError(&w, r, fmt.Errorf("cannot resolve query: %s", err), http.StatusBadGateway)
 			return
 		}
-		for _, item := range response {
-			fmt.Fprintf(w, "%s\r\n", item)
+		if _, err = io.WriteString(w, result); err != nil {
+			logHttpError(&w, r, fmt.Errorf("cannot write results: %s", err), http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+func makeListHandler(querier Querier) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			logHttpError(&w, r, errors.New(r.Method), http.StatusMethodNotAllowed)
+			return
+		}
+		query, err := url.QueryUnescape(r.URL.RawQuery)
+		if err != nil {
+			logHttpError(&w, r, fmt.Errorf("cannot decode query: %s", err), http.StatusBadRequest)
+		}
+		responses, err := querier.List(query)
+		if err != nil {
+			logHttpError(&w, r, fmt.Errorf("cannot resolve query: %s", err), http.StatusBadGateway)
+			return
+		}
+		for _, response := range responses {
+			fmt.Fprintf(w, "%s\r\n", response)
 		}
 	}
 }

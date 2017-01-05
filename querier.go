@@ -30,6 +30,8 @@ const DefaultMaxIdleConnsPerHost = 1
 // strings and values are slices of strings.
 type Querier interface {
 	Close() error
+	Expand(string) (string, error)
+	List(string) ([]string, error)
 	Query(string) ([]string, error)
 }
 
@@ -185,7 +187,7 @@ func NewQuerier(config *Configurator) (Querier, error) {
 
 func defaultAddr2Getter(addr string) gogetter.Getter {
 	return &gogetter.Prefixer{
-		Prefix: fmt.Sprintf("http://%s/range/list?", addr),
+		Prefix: fmt.Sprintf("http://%s", addr),
 		Getter: &http.Client{
 			// WARNING: Using http.Client instance without a Timeout will cause resource
 			// leaks and may render your program inoperative if the client connects to a

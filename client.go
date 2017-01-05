@@ -22,7 +22,50 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// Query sends the specified query string to the Client's Getter, and converts a non-error result
+// Expand sends the specified query string to the Client's Getter, and converts a non-error result
+// into a slice of bytes.
+//
+// If the response includes a RangeException header, it returns ErrRangeException. If the status
+// code is not okay, it returns ErrStatusNotOK. Finally, if it cannot parse the lines in the
+// response body, it returns ErrParseException.
+//
+//	// use the range querier
+//	result, err := querier.Expand("%someQuery")
+//	if err != nil {
+//		fmt.Fprintf(os.Stderr, "%s", err)
+//		os.Exit(1)
+//	}
+//	fmt.Printf("%s\n", result)
+func (c *Client) Expand(query string) (string, error) {
+	resp, err := c.Getter.Get("/range/expand?" + url.QueryEscape(query))
+	if err != nil {
+		return "", err
+	}
+
+	// got a response from this server, so commit to reading entire body (needed when re-using
+	// Keep-Alive connections)
+	defer func(iorc io.ReadCloser) {
+		io.Copy(ioutil.Discard, iorc) // so we can reuse connections via Keep-Alive
+		iorc.Close()
+	}(resp.Body)
+
+	// NOTE: wrap known range exceptions
+	rangeException := resp.Header.Get("RangeException")
+	if rangeException != "" {
+		return "", ErrRangeException{rangeException}
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", ErrStatusNotOK{resp.Status, resp.StatusCode}
+	}
+
+	bb, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(bb), nil
+}
+
+// List sends the specified query string to the Client's Getter, and converts a non-error result
 // into a list of strings.
 //
 // If the response includes a RangeException header, it returns ErrRangeException. If the status
@@ -30,16 +73,16 @@ func (c *Client) Close() error {
 // response body, it returns ErrParseException.
 //
 //	// use the range querier
-//	lines, err := querier.Query("%someQuery")
+//	list, err := querier.List("%someQuery")
 //	if err != nil {
 //		fmt.Fprintf(os.Stderr, "%s", err)
 //		os.Exit(1)
 //	}
-//	for _, line := range lines {
+//	for _, line := range list {
 //		fmt.Println(line)
 //	}
-func (c *Client) Query(query string) ([]string, error) {
-	resp, err := c.Getter.Get(url.QueryEscape(query))
+func (c *Client) List(query string) ([]string, error) {
+	resp, err := c.Getter.Get("/range/list?" + url.QueryEscape(query))
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +115,26 @@ func (c *Client) Query(query string) ([]string, error) {
 	}
 
 	return lines, nil
+}
+
+// Query sends the specified query string to the Client's Getter, and converts a non-error result
+// into a list of strings.
+//
+// If the response includes a RangeException header, it returns ErrRangeException. If the status
+// code is not okay, it returns ErrStatusNotOK. Finally, if it cannot parse the lines in the
+// response body, it returns ErrParseException.
+//
+//	// use the range querier
+//	lines, err := querier.Query("%someQuery")
+//	if err != nil {
+//		fmt.Fprintf(os.Stderr, "%s", err)
+//		os.Exit(1)
+//	}
+//	for _, line := range lines {
+//		fmt.Println(line)
+//	}
+func (c *Client) Query(query string) ([]string, error) {
+	return c.List(query)
 }
 
 // ErrRangeException is returned when the response headers includes 'RangeException'.
