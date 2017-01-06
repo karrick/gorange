@@ -150,39 +150,39 @@ func NewQuerier(config *Configurator) (Querier, error) {
 
 	q := &Client{hg}
 
-	if config.CheckVersionPeriodicity > 0 || config.TTE > 0 || config.TTL > 0 {
-		expiry := config.TTE
-		stale := config.TTL
-
-		// If using %version, we don't need to worry about having goswarm refreshing stale
-		// tuples, because values never actually go stale until the version is updated.
-		if config.CheckVersionPeriodicity > 0 {
-			stale = 0
-
-			// Unless we have expiry on the data values, they will persist until %version
-			// changes, so make sure one exists to prevent heap gluttony.
-			if expiry == 0 {
-				expiry = 4 * time.Hour
-			}
-		}
-
-		// There is no point in having the underlying cache run its GC if results never
-		// expire.
-		var gcPeriodicity time.Duration
-		if expiry > 0 {
-			gcPeriodicity = expiry
-		}
-
-		return newCachingClient(&cachingClientConfig{
-			querier:                 q,
-			stale:                   stale,
-			expiry:                  expiry,
-			checkVersionPeriodicity: config.CheckVersionPeriodicity,
-			gcPeriodicity:           gcPeriodicity,
-		})
+	if config.CheckVersionPeriodicity == 0 && config.TTE == 0 && config.TTL == 0 {
+		return q, nil
 	}
 
-	return q, nil
+	expiry := config.TTE
+	stale := config.TTL
+
+	// If using %version, we don't need to worry about having goswarm refreshing stale
+	// tuples, because values never actually go stale until the version is updated.
+	if config.CheckVersionPeriodicity > 0 {
+		stale = 0
+
+		// Unless we have expiry on the data values, they will persist until %version
+		// changes, so make sure one exists to prevent heap gluttony.
+		if expiry == 0 {
+			expiry = 4 * time.Hour
+		}
+	}
+
+	// There is no point in having the underlying cache run its GC if results never
+	// expire.
+	var gcPeriodicity time.Duration
+	if expiry > 0 {
+		gcPeriodicity = expiry
+	}
+
+	return newCachingClient(&cachingClientConfig{
+		querier:                 q,
+		stale:                   stale,
+		expiry:                  expiry,
+		checkVersionPeriodicity: config.CheckVersionPeriodicity,
+		gcPeriodicity:           gcPeriodicity,
+	})
 }
 
 func defaultAddr2Getter(addr string) gogetter.Getter {
@@ -205,24 +205,47 @@ func defaultAddr2Getter(addr string) gogetter.Getter {
 	}
 }
 
+//
+// Some utility functions for the default method of whether or not a query with an error result
+// ought to be retried.
+//
+
+type temporary interface {
+	Temporary() bool
+}
+
+type timeout interface {
+	Timeout() bool
+}
+
+func isTemporary(err error) bool {
+	t, ok := err.(temporary)
+	return ok && t.Temporary()
+}
+
+func isTimeout(err error) bool {
+	t, ok := err.(timeout)
+	return ok && t.Timeout()
+}
+
 func makeRetryCallback(count int) func(error) bool {
 	return func(err error) bool {
-		switch err1 := err.(type) {
-		case net.Error:
-			if err1.Temporary() || err1.Timeout() {
-				return true
-			}
-			switch err2 := err.(type) {
-			case *url.Error:
-				switch err3 := err2.Err.(type) {
-				case *net.OpError:
-					switch err3.Err.(type) {
-					case *net.DNSError:
-						return count > 1
-					}
+		// Because some DNSError errors can be temporary or timeout, most efficient to check
+		// whether those conditions are true first.
+		if isTemporary(err) || isTimeout(err) {
+			return true
+		}
+		// And if error is neither temporary nor a timeout, then it might still be retryable
+		// if it's a DNSError and there are more than one servers configured to proxy for.
+		if urlError, ok := err.(*url.Error); ok {
+			if netOpError, ok := urlError.Err.(*net.OpError); ok {
+				if _, ok = netOpError.Err.(*net.DNSError); ok {
+					// "no such host": This query may be retried either if there
+					// are more servers in the list of servers, or if the DNS
+					// lookup resulted in a timeout.
+					return count > 1
 				}
 			}
-			return false
 		}
 		return false
 	}
