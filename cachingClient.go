@@ -217,7 +217,7 @@ func (c CachingClient) getExpandLastRequestTime(key string) time.Time {
 }
 
 func (c *CachingClient) refreshBasedOnVersion() error {
-	results, err := c.config.querier.Query("%version")
+	results, err := c.config.querier.List("%version")
 	if err != nil {
 		return err
 	}
