@@ -21,7 +21,7 @@ func main() {
 
 	servers := strings.Split(*servers, ",")
 	if len(servers) == 0 || servers[0] == "" {
-		servers = []string{"range.example.com"} // TODO
+		servers = []string{"range.example.com"} // TODO: put one or more actual range server addresses here
 	}
 
 	log.Fatal(gorange.Proxy(gorange.ProxyConfig{
