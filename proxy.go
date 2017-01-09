@@ -37,20 +37,20 @@ func Proxy(config ProxyConfig) error {
 func makeExpandHandler(querier Querier) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
-			logHttpError(&w, r, errors.New(r.Method), http.StatusMethodNotAllowed)
+			logHTTPError(w, r, errors.New(r.Method), http.StatusMethodNotAllowed)
 			return
 		}
 		query, err := url.QueryUnescape(r.URL.RawQuery)
 		if err != nil {
-			logHttpError(&w, r, fmt.Errorf("cannot decode query: %s", err), http.StatusBadRequest)
+			logHTTPError(w, r, fmt.Errorf("cannot decode query: %s", err), http.StatusBadRequest)
 		}
-		result, err := querier.Expand(query)
+		response, err := querier.Expand(query)
 		if err != nil {
-			logHttpError(&w, r, fmt.Errorf("cannot resolve query: %s", err), http.StatusBadGateway)
+			logHTTPError(w, r, fmt.Errorf("cannot resolve query: %s", err), http.StatusBadGateway)
 			return
 		}
-		if _, err = io.WriteString(w, result); err != nil {
-			logHttpError(&w, r, fmt.Errorf("cannot write results: %s", err), http.StatusInternalServerError)
+		if _, err = io.WriteString(w, response); err != nil {
+			logHTTPError(w, r, fmt.Errorf("cannot write response: %s", err), http.StatusInternalServerError)
 			return
 		}
 	}
@@ -59,26 +59,29 @@ func makeExpandHandler(querier Querier) func(http.ResponseWriter, *http.Request)
 func makeListHandler(querier Querier) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
-			logHttpError(&w, r, errors.New(r.Method), http.StatusMethodNotAllowed)
+			logHTTPError(w, r, errors.New(r.Method), http.StatusMethodNotAllowed)
 			return
 		}
 		query, err := url.QueryUnescape(r.URL.RawQuery)
 		if err != nil {
-			logHttpError(&w, r, fmt.Errorf("cannot decode query: %s", err), http.StatusBadRequest)
+			logHTTPError(w, r, fmt.Errorf("cannot decode query: %s", err), http.StatusBadRequest)
 		}
 		responses, err := querier.List(query)
 		if err != nil {
-			logHttpError(&w, r, fmt.Errorf("cannot resolve query: %s", err), http.StatusBadGateway)
+			logHTTPError(w, r, fmt.Errorf("cannot resolve query: %s", err), http.StatusBadGateway)
 			return
 		}
 		for _, response := range responses {
-			fmt.Fprintf(w, "%s\r\n", response)
+			if _, err = fmt.Fprintf(w, "%s\r\n", response); err != nil {
+				logHTTPError(w, r, fmt.Errorf("cannot write response: %s", err), http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 }
 
-func logHttpError(w *http.ResponseWriter, r *http.Request, err error, status int) {
-	http.Error(*w, err.Error(), status)
+func logHTTPError(w http.ResponseWriter, r *http.Request, err error, status int) {
+	http.Error(w, err.Error(), status)
 }
 
 type gzipResponseWriter struct {
@@ -101,7 +104,7 @@ func makeGzipHandler(fn http.HandlerFunc) http.HandlerFunc {
 		fn(gzipResponseWriter{Writer: gz, ResponseWriter: w}, r)
 		err := gz.Close()
 		if err != nil {
-			logHttpError(&w, r, fmt.Errorf("cannot compress response: %s", err), http.StatusInternalServerError)
+			logHTTPError(w, r, fmt.Errorf("cannot compress response: %s", err), http.StatusInternalServerError)
 		}
 	}
 }
