@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/karrick/gogetter"
@@ -153,7 +152,7 @@ type ErrStatusNotOK struct {
 }
 
 func (err ErrStatusNotOK) Error() string {
-	return "response status code: " + strconv.Itoa(err.StatusCode)
+	return err.Status
 }
 
 // ErrParseException is returned by Client.Query method when an error occurs while parsing the Get
