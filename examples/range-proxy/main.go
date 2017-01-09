@@ -10,23 +10,22 @@ import (
 )
 
 var (
-	defaultQuerier          gorange.Querier
-	checkVersionPeriodicity = flag.Duration("checkVersion", 15*time.Second, "periodicity to check %version for updates")
-	port                    = flag.Uint("port", 8081, "port to bind to")
-	servers                 = flag.String("servers", "", "specify comma delimited list of range servers")
+	argCheckVersionPeriodicity = flag.Duration("checkVersion", 15*time.Second, "periodicity to check %version for updates")
+	argPort                    = flag.Uint("port", 8081, "port to bind to")
+	argServers                 = flag.String("servers", "", "specify comma delimited list of range servers")
 )
 
 func main() {
 	flag.Parse()
 
-	servers := strings.Split(*servers, ",")
-	if len(servers) == 0 || servers[0] == "" {
+	servers := strings.Split(*argServers, ",")
+	if servers[0] == "" {
 		servers = []string{"range.example.com"} // TODO: put one or more actual range server addresses here
 	}
 
 	log.Fatal(gorange.Proxy(gorange.ProxyConfig{
-		CheckVersionPeriodicity: *checkVersionPeriodicity,
-		Port:    *port,
+		CheckVersionPeriodicity: *argCheckVersionPeriodicity,
+		Port:    *argPort,
 		Servers: servers,
 	}))
 }
