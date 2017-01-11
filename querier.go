@@ -20,7 +20,7 @@ const DefaultDialTimeout = 5 * time.Second
 
 // DefaultDialKeepAlive is used when no Addr2Getter function is provided to control the keep-alive
 // duration for an active connection.
-const DefaultDialKeepAlive = 1 * time.Minute
+const DefaultDialKeepAlive = 30 * time.Second
 
 // DefaultMaxIdleConnsPerHost is used when no Addr2Getter function is provided to control how many
 // idle connections to keep alive per host.
