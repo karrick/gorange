@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -25,7 +26,9 @@ func main() {
 
 	log.Fatal(gorange.Proxy(gorange.ProxyConfig{
 		CheckVersionPeriodicity: *argCheckVersionPeriodicity,
+		Log:     os.Stderr,
 		Port:    *argPort,
 		Servers: servers,
+		Timeout: 1 * time.Minute,
 	}))
 }
