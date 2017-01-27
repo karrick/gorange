@@ -153,15 +153,17 @@ func (c *CachingClient) Close() error {
 	close(c.halt)
 
 	// Wait for run() loop to acknowledge signal that it's complete
-	<-c.closeError // current run method always returns nil error
+	err := <-c.closeError
 
-	if err := c.expandCache.Close(); err != nil {
-		// we already have one error to return, so ignore this one (but it would be nice to
-		// return both errors)
-		_ = c.listCache.Close()
-		return err
+	if cerr := c.expandCache.Close(); err == nil {
+		err = cerr
 	}
-	return c.listCache.Close()
+	if cerr := c.listCache.Close(); err == nil {
+		err = cerr
+	}
+
+	// TODO: It would be nice to return all errors rather than first one.
+	return err
 }
 
 // Expand returns the response of the query, first checking in the TTL cache, then by actually
@@ -230,9 +232,9 @@ func (c *CachingClient) refreshBasedOnVersion() error {
 		return err
 	}
 	if version > c.version {
-		when := time.Unix(version, 0).Add(-c.config.stale)
-		c.expandRefreshBefore(when)
-		c.listRefreshBefore(when)
+		cutoff := time.Unix(version, 0).Add(-c.config.stale)
+		c.expandRefreshBefore(cutoff)
+		c.listRefreshBefore(cutoff)
 		c.version = version
 	}
 	return nil
@@ -324,9 +326,9 @@ func (c *CachingClient) run() {
 			}
 		case <-time.After(stale):
 			if c.config.stale > 0 {
-				when := time.Now().Add(-c.config.expiry)
-				c.expandRefreshBefore(when)
-				c.listRefreshBefore(when)
+				cutoff := time.Now().Add(-c.config.expiry)
+				c.expandRefreshBefore(cutoff)
+				c.listRefreshBefore(cutoff)
 			}
 		case <-c.halt:
 			c.closeError <- nil
