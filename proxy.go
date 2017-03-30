@@ -24,6 +24,10 @@ type ProxyConfig struct {
 	// Log directs the proxy to emit common log formatted log lines to the specified io.Writer.
 	Log io.Writer
 
+	// LogFormat specifies the log format to use when Log is not nil.  See `gohm` package for
+	// LogFormat specifications.  If left blank, uses `gohm.DefaultLogFormat`.
+	LogFormat string
+
 	// Port specifies which network port the proxy should bind to.
 	Port uint
 
@@ -54,15 +58,16 @@ func Proxy(config ProxyConfig) error {
 	mux.Handle("/range/list", onlyGet(decodeURI(list(querier))))
 	mux.Handle("/", notFound())
 
-	var h http.Handler = mux
+	var h http.Handler = gohm.ConvertPanicsToErrors(mux)
 	if config.Timeout > 0 {
-		h = http.TimeoutHandler(h, config.Timeout, "took too long to process request")
+		h = gohm.WithTimeout(config.Timeout, h)
 	}
-	h = gohm.PanicHandler(mux)
-	h = gohm.ErrorCountHandler(errorCount, h)
 	if config.Log != nil {
-		h = gohm.ErrorLogHandler(config.Log, h)
-		// h = gohm.LogHandler(config.Log, h)
+		if config.LogFormat == "" {
+			config.LogFormat = gohm.DefaultLogFormat
+		}
+		logBitmask := gohm.LogStatusAll
+		h = gohm.LogStatusBitmaskWithFormat(config.LogFormat, &logBitmask, config.Log, h)
 	}
 
 	server := http.Server{
@@ -76,7 +81,7 @@ func Proxy(config ProxyConfig) error {
 
 func notFound() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gohm.Error(w, fmt.Sprintf("%v", r.URL), http.StatusNotFound)
+		gohm.Error(w, r.URL.String(), http.StatusNotFound)
 	})
 }
 
