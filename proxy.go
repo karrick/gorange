@@ -1,6 +1,7 @@
 package gorange
 
 import (
+	"bytes"
 	"context"
 	"expvar"
 	"fmt"
@@ -56,19 +57,12 @@ func Proxy(config ProxyConfig) error {
 	mux := http.NewServeMux()
 	mux.Handle("/range/expand", onlyGet(decodeURI(expand(querier))))
 	mux.Handle("/range/list", onlyGet(decodeURI(list(querier))))
-	mux.Handle("/", notFound())
+	mux.Handle("/", notFound()) // while not required, this makes for a nicer log output and client response
 
-	var h http.Handler = gohm.ConvertPanicsToErrors(mux)
-	if config.Timeout > 0 {
-		h = gohm.WithTimeout(config.Timeout, h)
-	}
-	if config.Log != nil {
-		if config.LogFormat == "" {
-			config.LogFormat = gohm.DefaultLogFormat
-		}
-		logBitmask := gohm.LogStatusAll
-		h = gohm.LogStatusBitmaskWithFormat(config.LogFormat, &logBitmask, config.Log, h)
-	}
+	var h http.Handler = gohm.New(mux, gohm.Config{
+		LogWriter: config.Log,
+		Timeout:   config.Timeout,
+	})
 
 	server := http.Server{
 		Addr:         fmt.Sprintf(":%d", config.Port),
@@ -145,11 +139,16 @@ func list(querier Querier) http.Handler {
 			gohm.Error(w, "cannot resolve query: "+err.Error(), http.StatusBadGateway)
 			return
 		}
+		buf := new(bytes.Buffer)
 		for _, response := range responses {
-			if _, err = fmt.Fprintf(w, "%s\r\n", response); err != nil {
+			if _, err = buf.WriteString(response + "\r\n"); err != nil {
 				gohm.Error(w, "cannot write response: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
+		}
+		if _, err = buf.WriteTo(w); err != nil {
+			gohm.Error(w, "cannot write response: "+err.Error(), http.StatusInternalServerError)
+			return
 		}
 	})
 }
