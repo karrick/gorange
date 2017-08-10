@@ -44,5 +44,6 @@ func main() {
 		Port:    *argPort,
 		Servers: servers,
 		Timeout: 1 * time.Minute,
+		TTE:     12 * time.Hour,
 	}))
 }
