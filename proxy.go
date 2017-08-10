@@ -40,6 +40,14 @@ type ProxyConfig struct {
 	// no timeout will be used. Not having a timeout value may cause resource exhaustion where
 	// any of the proxied servers take too long to return a response.
 	Timeout time.Duration
+
+	// TTE is duration of time before cached response is no longer able to be served, even if
+	// attempts to fetch new value repeatedly fail.  This value should be large if your application
+	// needs to still operate even when range servers are down.  A zero-value for this implies that
+	// values never expire and can continue to be served.  TTE and CheckVersionPeriodicity work
+	// together to prevent frequently needlessly asking servers for information that is still
+	// current while preventing heap build-up on clients.
+	TTE time.Duration
 }
 
 // Proxy creates a proxy http server on the port that proxies range queries to the specified range
@@ -49,6 +57,7 @@ func Proxy(config ProxyConfig) error {
 		CheckVersionPeriodicity: config.CheckVersionPeriodicity,
 		RetryCount:              len(config.Servers),
 		Servers:                 config.Servers,
+		TTE:                     config.TTE,
 	})
 	if err != nil {
 		return err
@@ -59,16 +68,18 @@ func Proxy(config ProxyConfig) error {
 	mux.Handle("/range/list", onlyGet(decodeURI(list(querier))))
 	mux.Handle("/", notFound()) // while not required, this makes for a nicer log output and client response
 
+	logBitmask := gohm.LogStatusErrors
 	var h http.Handler = gohm.New(mux, gohm.Config{
-		LogWriter: config.Log,
-		Timeout:   config.Timeout,
+		LogBitmask: &logBitmask,
+		LogWriter:  config.Log,
+		Timeout:    config.Timeout,
 	})
 
 	server := http.Server{
 		Addr:         fmt.Sprintf(":%d", config.Port),
 		Handler:      h,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 30 * time.Second,
 	}
 	return server.ListenAndServe()
 }
