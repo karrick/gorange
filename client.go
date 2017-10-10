@@ -48,13 +48,11 @@ func (c *Client) Expand(query string) (string, error) {
 		iorc.Close()
 	}(resp.Body)
 
-	// NOTE: wrap known range exceptions
-	rangeException := resp.Header.Get("RangeException")
-	if rangeException != "" {
-		return "", ErrRangeException{rangeException}
-	}
 	if resp.StatusCode != http.StatusOK {
 		return "", ErrStatusNotOK{resp.Status, resp.StatusCode}
+	}
+	if rangeException := resp.Header.Get("RangeException"); rangeException != "" {
+		return "", ErrRangeException{rangeException}
 	}
 
 	bb, err := ioutil.ReadAll(resp.Body)
@@ -93,13 +91,11 @@ func (c *Client) List(query string) ([]string, error) {
 		iorc.Close()
 	}(resp.Body)
 
-	// NOTE: wrap known range exceptions
-	rangeException := resp.Header.Get("RangeException")
-	if rangeException != "" {
-		return nil, ErrRangeException{rangeException}
-	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, ErrStatusNotOK{resp.Status, resp.StatusCode}
+	}
+	if rangeException := resp.Header.Get("RangeException"); rangeException != "" {
+		return nil, ErrRangeException{rangeException}
 	}
 
 	var lines []string

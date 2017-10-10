@@ -82,23 +82,25 @@ func newCachingClient(config *cachingClientConfig) (*CachingClient, error) {
 		GCPeriodicity:      config.gcPeriodicity,
 		Lookup: func(url string) (interface{}, error) {
 			results, err := config.querier.Expand(url)
-			if err != nil {
-				if _, ok := err.(ErrRangeException); ok {
-					now := time.Now()
-					// RoundRobin stops looking for a non-error value, because
-					// we send it an error as the value.
-					return goswarm.TimedValue{
-						Value:  nil,
-						Err:    err,
-						Stale:  now.Add(badStaleDuration),
-						Expiry: now.Add(badExpiryDuration),
-					}, nil
-				}
-				// Return the non-RangeException error so When more than one server,
-				// RoundRobin will continue looking for a non-error value
-				return nil, err
+			// Check for nil before type check because it's faster, and it's the common case.
+			if err == nil {
+				return results, nil
 			}
-			return results, nil
+			if _, ok := err.(ErrRangeException); ok {
+				// ErrRangeException events are cached as bad values, so library
+				// does not send the same request to other range servers.
+				now := time.Now()
+				return goswarm.TimedValue{
+					Value:  nil,
+					Err:    err,
+					Stale:  now.Add(badStaleDuration),
+					Expiry: now.Add(badExpiryDuration),
+				}, nil
+			}
+			// Return all non-RangeException events, including http.Get errors
+			// and ErrStatusNotOK errors, so RoundRobin will continue looking
+			// for a non-error value.
+			return nil, err
 		},
 	}
 
@@ -110,23 +112,25 @@ func newCachingClient(config *cachingClientConfig) (*CachingClient, error) {
 	listConfig := expandConfig
 	listConfig.Lookup = func(url string) (interface{}, error) {
 		results, err := config.querier.List(url)
-		if err != nil {
-			if _, ok := err.(ErrRangeException); ok {
-				now := time.Now()
-				// RoundRobin stops looking for a non-error value, because
-				// we send it an error as the value.
-				return goswarm.TimedValue{
-					Value:  nil,
-					Err:    err,
-					Stale:  now.Add(badStaleDuration),
-					Expiry: now.Add(badExpiryDuration),
-				}, nil
-			}
-			// Return the non-RangeException error so When more than one server,
-			// RoundRobin will continue looking for a non-error value
-			return nil, err
+		// Check for nil before type check because it's faster, and it's the common case.
+		if err == nil {
+			return results, nil
 		}
-		return results, nil
+		if _, ok := err.(ErrRangeException); ok {
+			now := time.Now()
+			// RangeException events are cached as bad values, so library
+			// does not send the same request to other range servers.
+			return goswarm.TimedValue{
+				Value:  nil,
+				Err:    err,
+				Stale:  now.Add(badStaleDuration),
+				Expiry: now.Add(badExpiryDuration),
+			}, nil
+		}
+		// Return all non-RangeException events, including http.Get errors
+		// and ErrStatusNotOK errors, so RoundRobin will continue looking
+		// for a non-error value.
+		return nil, err
 	}
 
 	listCache, err := goswarm.NewSimple(&listConfig)
