@@ -105,7 +105,7 @@ functions not shown here.
     )
 
     func main() {
-    	servers := []string{"range1.example.com", "range.corp.linkedin.com", "range3.example.com"}
+    	servers := []string{"range1.example.com", "range2.example.com", "range3.example.com"}
     
     	config := &gorange.Configurator{
     		Addr2Getter:             addr2Getter,
