@@ -2,6 +2,7 @@ package gorange
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -33,6 +34,7 @@ type Querier interface {
 	Expand(string) (string, error)
 	List(string) ([]string, error)
 	Query(string) ([]string, error)
+	Raw(string) (io.ReadCloser, error)
 }
 
 // Configurator provides a way to list the range server addresses, and a way to override defaults

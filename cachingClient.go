@@ -1,11 +1,15 @@
 package gorange
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/karrick/gorill"
 	"github.com/karrick/goswarm"
 )
 
@@ -18,6 +22,9 @@ type CachingClient struct {
 
 	listCache            *goswarm.Simple
 	listLastRequestTimes *goswarm.Simple
+
+	rawCache            *goswarm.Simple
+	rawLastRequestTimes *goswarm.Simple
 
 	version int64
 
@@ -70,6 +77,10 @@ func newCachingClient(config *cachingClientConfig) (*CachingClient, error) {
 		return nil, err
 	}
 	listLastRequestTimes, err := goswarm.NewSimple(nil)
+	if err != nil {
+		return nil, err
+	}
+	rawLastRequestTimes, err := goswarm.NewSimple(nil)
 	if err != nil {
 		return nil, err
 	}
@@ -137,12 +148,50 @@ func newCachingClient(config *cachingClientConfig) (*CachingClient, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	rawConfig := expandConfig
+	rawConfig.Lookup = func(url string) (interface{}, error) {
+		iorc, err := config.querier.Raw(url)
+		// Check for nil before type check because it's faster, and it's the common case.
+		if err == nil {
+			// We have been given an io.ReadCloser that contains the data to be
+			// read and stored in the cache.
+			buf, err := ioutil.ReadAll(iorc)
+			if err2 := iorc.Close(); err == nil {
+				err = err2
+			}
+			return buf, err
+		}
+		if _, ok := err.(ErrRangeException); ok {
+			now := time.Now()
+			// RangeException events are cached as bad values, so library
+			// does not send the same request to other range servers.
+			return goswarm.TimedValue{
+				Value:  nil,
+				Err:    err,
+				Stale:  now.Add(badStaleDuration),
+				Expiry: now.Add(badExpiryDuration),
+			}, nil
+		}
+		// Return all non-RangeException events, including http.Get errors
+		// and ErrStatusNotOK errors, so RoundRobin will continue looking
+		// for a non-error value.
+		return nil, err
+	}
+
+	rawCache, err := goswarm.NewSimple(&rawConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	c := &CachingClient{
 		config:                 *config,
 		expandCache:            expandCache,
 		expandLastRequestTimes: expandLastRequestTimes,
 		listCache:              listCache,
 		listLastRequestTimes:   listLastRequestTimes,
+		rawCache:               rawCache,
+		rawLastRequestTimes:    rawLastRequestTimes,
 	}
 	c.halt = make(chan struct{})
 	c.closeError = make(chan error)
@@ -163,6 +212,9 @@ func (c *CachingClient) Close() error {
 		err = cerr
 	}
 	if cerr := c.listCache.Close(); err == nil {
+		err = cerr
+	}
+	if cerr := c.rawCache.Close(); err == nil {
 		err = cerr
 	}
 
@@ -204,6 +256,23 @@ func (c *CachingClient) List(query string) ([]string, error) {
 // invoking the Query method on the underlying Querier.
 func (c *CachingClient) Query(query string) ([]string, error) {
 	return c.List(query)
+}
+
+// Raw sends the range request and checks for invalid responses from
+// downstream. If the response is valid, this returns the response body as an
+// io.ReadCloser for the client to use. It is the client's responsibility to
+// invoke the Close method on the returned io.ReadCloser.
+func (c *CachingClient) Raw(query string) (io.ReadCloser, error) {
+	c.rawLastRequestTimes.Store(query, time.Now())
+	raw, err := c.rawCache.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	results, ok := raw.([]byte)
+	if !ok {
+		return nil, fmt.Errorf("cannot convert %T to []byte", raw)
+	}
+	return gorill.NopCloseReader(bytes.NewBuffer(results)), nil
 }
 
 func (c CachingClient) getListLastRequestTime(key string) time.Time {

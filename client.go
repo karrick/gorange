@@ -79,28 +79,21 @@ func (c *Client) Expand(query string) (string, error) {
 //		fmt.Println(line)
 //	}
 func (c *Client) List(query string) ([]string, error) {
-	resp, err := c.Getter.Get("/range/list?" + url.QueryEscape(query))
+	iorc, err := c.Raw(query)
 	if err != nil {
 		return nil, err
 	}
 
-	// got a response from this server, so commit to reading entire body (needed when re-using
-	// Keep-Alive connections)
+	// got a response from this server, so commit to reading entire body (needed
+	// when re-using Keep-Alive connections)
 	defer func(iorc io.ReadCloser) {
-		io.Copy(ioutil.Discard, iorc) // so we can reuse connections via Keep-Alive
-		iorc.Close()
-	}(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, ErrStatusNotOK{resp.Status, resp.StatusCode}
-	}
-	if rangeException := resp.Header.Get("RangeException"); rangeException != "" {
-		return nil, ErrRangeException{rangeException}
-	}
+		_, _ = io.Copy(ioutil.Discard, iorc) // so we can reuse connections via Keep-Alive
+		_ = iorc.Close()
+	}(iorc)
 
 	var lines []string
 
-	scanner := bufio.NewScanner(resp.Body)
+	scanner := bufio.NewScanner(iorc)
 	for scanner.Scan() {
 		lines = append(lines, strings.TrimSpace(scanner.Text()))
 	}
@@ -130,6 +123,24 @@ func (c *Client) List(query string) ([]string, error) {
 //	}
 func (c *Client) Query(query string) ([]string, error) {
 	return c.List(query)
+}
+
+// Raw sends the range request and checks for invalid responses from
+// downstream. If the response is valid, this returns the response body as an
+// io.ReadCloser for the client to use. It is the client's responsibility to
+// invoke the Close method on the returned io.ReadCloser.
+func (c *Client) Raw(someQuery string) (io.ReadCloser, error) {
+	resp, err := c.Getter.Get("/range/list?" + url.QueryEscape(someQuery))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, ErrStatusNotOK{resp.Status, resp.StatusCode}
+	}
+	if rangeException := resp.Header.Get("RangeException"); rangeException != "" {
+		return nil, ErrRangeException{rangeException}
+	}
+	return resp.Body, nil
 }
 
 // ErrRangeException is returned when the response headers includes 'RangeException'.
