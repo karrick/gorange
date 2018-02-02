@@ -2,6 +2,12 @@
 
 
 [[projects]]
+  branch = "master"
+  name = "github.com/golang/snappy"
+  packages = ["."]
+  revision = "553a641470496b2327abcac10b36396bd98e45c9"
+
+[[projects]]
   name = "github.com/karrick/gogetter"
   packages = ["."]
   revision = "85185e75404aa222fe7834384ddf1277a6adb22c"
@@ -10,8 +16,20 @@
 [[projects]]
   name = "github.com/karrick/gohm"
   packages = ["."]
-  revision = "488932e65049db4a0c07f50c3b81772b369d5d25"
-  version = "v2.2.0"
+  revision = "129626d3981e5ffcba6f3518fe00eacbe46ee319"
+  version = "v2.6.0"
+
+[[projects]]
+  name = "github.com/karrick/golf"
+  packages = ["."]
+  revision = "d74d705840ebeb53a8a5788350f882daf1e26903"
+  version = "v0.1.2"
+
+[[projects]]
+  name = "github.com/karrick/gorill"
+  packages = ["."]
+  revision = "2029ed20939830f84cf08b5d94cd1f67747749a5"
+  version = "v1"
 
 [[projects]]
   name = "github.com/karrick/goswarm"
@@ -22,6 +40,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "c63e94a5c2328ec0b340c0b8c8d32c4913cc125a4cc45718296e197a51172380"
+  inputs-digest = "3e8221006a324672bd52986cb6d0a7ee9096f7c733dd407b5b74f442e47f2622"
   solver-name = "gps-cdcl"
   solver-version = 1
