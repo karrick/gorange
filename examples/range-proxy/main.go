@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,38 +9,39 @@ import (
 	"strings"
 	"time"
 
+	"github.com/karrick/golf"
 	"github.com/karrick/gorange"
 )
 
 var (
-	argCheckVersionPeriodicity = flag.Duration("checkVersion", 15*time.Second, "periodicity to check %version for updates")
-	argPort                    = flag.Uint("port", 8081, "port to bind to")
-	argPprof                   = flag.Uint("pprof", 0, "pprof port to bind to")
-	argServers                 = flag.String("servers", "", "specify comma delimited list of range servers")
+	optCheckVersion = golf.DurationP('c', "check-version", 15*time.Second, "periodicity to check %version for updates")
+	optPort         = golf.UintP('p', "port", 8081, "port to bind to")
+	optPprof        = golf.Uint("pprof", 0, "pprof port to bind to")
+	optServers      = golf.StringP('s', "servers", "", "specify comma delimited list of range servers")
 )
 
 func main() {
-	flag.Parse()
+	golf.Parse()
 
-	servers := strings.Split(*argServers, ",")
+	servers := strings.Split(*optServers, ",")
 	if servers[0] == "" {
-		servers = []string{"range.example.com"} // TODO: put one or more actual range server addresses here
+		servers = []string{"range"} // TODO: put one or more actual range server addresses here
 	}
 
-	if *argPprof > 0 {
+	if *optPprof > 0 {
 		go func() {
-			bind := fmt.Sprintf("localhost:%d", *argPprof)
+			bind := fmt.Sprintf("localhost:%d", *optPprof)
 			for {
 				log.Println(http.ListenAndServe(bind, nil))
-				time.Sleep(time.Second)
+				time.Sleep(time.Second) // wait a moment before restarting
 			}
 		}()
 	}
 
 	log.Fatal(gorange.Proxy(gorange.ProxyConfig{
-		CheckVersionPeriodicity: *argCheckVersionPeriodicity,
+		CheckVersionPeriodicity: *optCheckVersion,
 		Log:     os.Stderr,
-		Port:    *argPort,
+		Port:    *optPort,
 		Servers: servers,
 		Timeout: 1 * time.Minute,
 		TTE:     12 * time.Hour,

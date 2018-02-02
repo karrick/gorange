@@ -1,7 +1,6 @@
 package gorange
 
 import (
-	"bytes"
 	"context"
 	"expvar"
 	"fmt"
@@ -145,21 +144,17 @@ func expand(querier Querier) http.Handler {
 func list(querier Querier) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		query := queryFromContext(r.Context())
-		responses, err := querier.List(query)
+		iorc, err := querier.Raw(query)
 		if err != nil {
 			gohm.Error(w, "cannot resolve query: "+err.Error(), http.StatusBadGateway)
 			return
 		}
-		buf := new(bytes.Buffer)
-		for _, response := range responses {
-			if _, err = buf.WriteString(response + "\r\n"); err != nil {
-				gohm.Error(w, "cannot write response: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
+		_, err = io.Copy(w, iorc)
+		if err2 := iorc.Close(); err == nil {
+			err = err2
 		}
-		if _, err = buf.WriteTo(w); err != nil {
+		if err != nil {
 			gohm.Error(w, "cannot write response: "+err.Error(), http.StatusInternalServerError)
-			return
 		}
 	})
 }
