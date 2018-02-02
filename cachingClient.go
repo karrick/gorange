@@ -22,9 +22,6 @@ type CachingClient struct {
 	expandCache            *goswarm.Simple
 	expandLastRequestTimes *goswarm.Simple
 
-	listCache            *goswarm.Simple
-	listLastRequestTimes *goswarm.Simple
-
 	rawCache            *goswarm.Simple
 	rawLastRequestTimes *goswarm.Simple
 
@@ -40,19 +37,20 @@ type cachingClientConfig struct {
 	stale   time.Duration // prune periodicity
 	expiry  time.Duration // drop keys older than
 
-	// when non-zero, check %version and drop expired items or refresh stale items
+	// when non-zero, check %version and drop expired items or refresh stale
+	// items
 	checkVersionPeriodicity time.Duration
 
 	// when non-zero, periodically garbage collect expired items
 	gcPeriodicity time.Duration
 }
 
-// NewCachingClient returns CachingClient that attempts to respond to Query methods by consulting
-// its TTL cache, then directing the call to the underlying Querier if a valid response is not
-// stored.
+// NewCachingClient returns CachingClient that attempts to respond to Query
+// methods by consulting its TTL cache, then directing the call to the
+// underlying Querier if a valid response is not stored.
 func newCachingClient(config *cachingClientConfig) (*CachingClient, error) {
 	if config == nil {
-		config = &cachingClientConfig{}
+		config = new(cachingClientConfig)
 	}
 	if config.querier == nil {
 		return nil, fmt.Errorf("cannot create CachingClient without querier")
@@ -73,12 +71,9 @@ func newCachingClient(config *cachingClientConfig) (*CachingClient, error) {
 	badStaleDuration := 1 * time.Minute
 	badExpiryDuration := 5 * time.Minute
 
-	// nil config implies treat like a conventional map used for concurrent access: values never go stale, never expire
+	// nil config implies treat like a conventional map used for concurrent
+	// access: values never go stale, never expire
 	expandLastRequestTimes, err := goswarm.NewSimple(nil)
-	if err != nil {
-		return nil, err
-	}
-	listLastRequestTimes, err := goswarm.NewSimple(nil)
 	if err != nil {
 		return nil, err
 	}
@@ -95,14 +90,42 @@ func newCachingClient(config *cachingClientConfig) (*CachingClient, error) {
 		GCPeriodicity:      config.gcPeriodicity,
 		Lookup: func(url string) (interface{}, error) {
 			results, err := config.querier.Expand(url)
-			// Check for nil before type check because it's faster, and it's the common case.
-			if err == nil {
-				return results, nil
+			if err != nil {
+				if _, ok := err.(ErrRangeException); ok {
+					// ErrRangeException events are cached as bad values, so
+					// library does not send the same request to other range
+					// servers.
+					now := time.Now()
+					return goswarm.TimedValue{
+						Value:  nil,
+						Err:    err,
+						Stale:  now.Add(badStaleDuration),
+						Expiry: now.Add(badExpiryDuration),
+					}, nil
+				}
+				// Return all non-RangeException events, including http.Get
+				// errors and ErrStatusNotOK errors, so RoundRobin will continue
+				// looking for a non-error value.
+				return nil, err
 			}
+			return results, nil
+		},
+	}
+
+	expandCache, err := goswarm.NewSimple(&expandConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// Copy the previously defined config, and change the Lookup function.
+	rawConfig := expandConfig
+	rawConfig.Lookup = func(url string) (interface{}, error) {
+		iorc, err := config.querier.Raw(url)
+		if err != nil {
 			if _, ok := err.(ErrRangeException); ok {
-				// ErrRangeException events are cached as bad values, so library
-				// does not send the same request to other range servers.
 				now := time.Now()
+				// RangeException events are cached as bad values, so library
+				// does not send the same request to other range servers.
 				return goswarm.TimedValue{
 					Value:  nil,
 					Err:    err,
@@ -114,42 +137,14 @@ func newCachingClient(config *cachingClientConfig) (*CachingClient, error) {
 			// and ErrStatusNotOK errors, so RoundRobin will continue looking
 			// for a non-error value.
 			return nil, err
-		},
-	}
-
-	expandCache, err := goswarm.NewSimple(&expandConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	rawConfig := expandConfig
-	rawConfig.Lookup = func(url string) (interface{}, error) {
-		iorc, err := config.querier.Raw(url)
-		// Check for nil before type check because it's faster, and it's the common case.
-		if err == nil {
-			// We have been given an io.ReadCloser that contains the data to be
-			// read and stored in the cache.
-			buf, err := ioutil.ReadAll(iorc)
-			if err2 := iorc.Close(); err == nil {
-				err = err2
-			}
-			return buf, err
 		}
-		if _, ok := err.(ErrRangeException); ok {
-			now := time.Now()
-			// RangeException events are cached as bad values, so library
-			// does not send the same request to other range servers.
-			return goswarm.TimedValue{
-				Value:  nil,
-				Err:    err,
-				Stale:  now.Add(badStaleDuration),
-				Expiry: now.Add(badExpiryDuration),
-			}, nil
+		// We have been given an io.ReadCloser that contains the data to be read
+		// and stored in the cache.
+		buf, err := ioutil.ReadAll(iorc)
+		if err2 := iorc.Close(); err == nil {
+			err = err2
 		}
-		// Return all non-RangeException events, including http.Get errors
-		// and ErrStatusNotOK errors, so RoundRobin will continue looking
-		// for a non-error value.
-		return nil, err
+		return buf, err
 	}
 
 	rawCache, err := goswarm.NewSimple(&rawConfig)
@@ -161,50 +156,9 @@ func newCachingClient(config *cachingClientConfig) (*CachingClient, error) {
 		config:                 *config,
 		expandCache:            expandCache,
 		expandLastRequestTimes: expandLastRequestTimes,
-		listLastRequestTimes:   listLastRequestTimes,
 		rawCache:               rawCache,
 		rawLastRequestTimes:    rawLastRequestTimes,
 	}
-
-	listConfig := expandConfig
-	listConfig.Lookup = func(url string) (interface{}, error) {
-		iorc, err := c.Raw(url)
-		// Check for nil before type check because it's faster, and it's the common case.
-		if err == nil {
-			// NOTE: The CachingClient.Raw method returns a bytes buffer with a
-			// NOP closer, so we do not need to read and close it.
-			var lines []string
-			scanner := bufio.NewScanner(iorc)
-			for scanner.Scan() {
-				lines = append(lines, strings.TrimSpace(scanner.Text()))
-			}
-			if err = scanner.Err(); err != nil {
-				return nil, ErrParseException{err}
-			}
-			return lines, nil
-		}
-		if _, ok := err.(ErrRangeException); ok {
-			now := time.Now()
-			// RangeException events are cached as bad values, so library
-			// does not send the same request to other range servers.
-			return goswarm.TimedValue{
-				Value:  nil,
-				Err:    err,
-				Stale:  now.Add(badStaleDuration),
-				Expiry: now.Add(badExpiryDuration),
-			}, nil
-		}
-		// Return all non-RangeException events, including http.Get errors
-		// and ErrStatusNotOK errors, so RoundRobin will continue looking
-		// for a non-error value.
-		return nil, err
-	}
-
-	listCache, err := goswarm.NewSimple(&listConfig)
-	if err != nil {
-		return nil, err
-	}
-	c.listCache = listCache
 
 	c.halt = make(chan struct{})
 	c.closeError = make(chan error)
@@ -212,9 +166,10 @@ func newCachingClient(config *cachingClientConfig) (*CachingClient, error) {
 	return c, nil
 }
 
-// Close releases all memory and go-routines used by the Simple swarm. If during instantiation,
-// checkVersionPeriodicty was greater than the zero-value for time.Duration, this method may block
-// while completing any in progress updates due to `%version` changes.
+// Close releases all memory and go-routines used by the Simple swarm. If during
+// instantiation, checkVersionPeriodicty was greater than the zero-value for
+// time.Duration, this method may block while completing any in progress updates
+// due to `%version` changes.
 func (c *CachingClient) Close() error {
 	close(c.halt)
 
@@ -222,9 +177,6 @@ func (c *CachingClient) Close() error {
 	err := <-c.closeError
 
 	if cerr := c.expandCache.Close(); err == nil {
-		err = cerr
-	}
-	if cerr := c.listCache.Close(); err == nil {
 		err = cerr
 	}
 	if cerr := c.rawCache.Close(); err == nil {
@@ -235,8 +187,8 @@ func (c *CachingClient) Close() error {
 	return err
 }
 
-// Expand returns the response of the query, first checking in the TTL cache, then by actually
-// invoking the Expand method on the underlying Querier.
+// Expand returns the response of the query, first checking in the TTL cache,
+// then by actually invoking the Expand method on the underlying Querier.
 func (c *CachingClient) Expand(query string) (string, error) {
 	c.expandLastRequestTimes.Store(query, time.Now())
 	raw, err := c.expandCache.Query(query)
@@ -250,23 +202,33 @@ func (c *CachingClient) Expand(query string) (string, error) {
 	return result, nil
 }
 
-// List returns the response of the query, first checking in the TTL cache, then by actually
-// invoking the List method on the underlying Querier.
+// List returns the response of the query, first checking in the TTL cache, then
+// by actually invoking the List method on the underlying Querier.
 func (c *CachingClient) List(query string) ([]string, error) {
-	c.listLastRequestTimes.Store(query, time.Now())
-	raw, err := c.listCache.Query(query)
+	iorc, err := c.Raw(query)
 	if err != nil {
+		// Return all non-RangeException events, including http.Get errors and
+		// ErrStatusNotOK errors, so RoundRobin will continue looking for a
+		// non-error value.
 		return nil, err
 	}
-	results, ok := raw.([]string)
-	if !ok {
-		return nil, fmt.Errorf("cannot convert %T to []string", raw)
+
+	// NOTE: The CachingClient.Raw method returns a bytes.Buffer with a NOP
+	// closer, so we do not need to close it, and no need to fully read it after
+	// an error.
+	var lines []string
+	scanner := bufio.NewScanner(iorc)
+	for scanner.Scan() {
+		lines = append(lines, strings.TrimSpace(scanner.Text()))
 	}
-	return results, nil
+	if err = scanner.Err(); err != nil {
+		return nil, ErrParseException{err}
+	}
+	return lines, nil
 }
 
-// Query returns the response of the query, first checking in the TTL cache, then by actually
-// invoking the Query method on the underlying Querier.
+// Query returns the response of the query, first checking in the TTL cache,
+// then by actually invoking the Query method on the underlying Querier.
 func (c *CachingClient) Query(query string) ([]string, error) {
 	return c.List(query)
 }
@@ -285,13 +247,14 @@ func (c *CachingClient) Raw(query string) (io.ReadCloser, error) {
 	if !ok {
 		return nil, fmt.Errorf("cannot convert %T to []byte", raw)
 	}
+	// Convert the []byte to an io.ReadCloser
 	return gorill.NopCloseReader(bytes.NewBuffer(results)), nil
 }
 
-func (c CachingClient) getListLastRequestTime(key string) time.Time {
-	lrt, ok := c.listLastRequestTimes.Load(key)
+func (c CachingClient) getRawLastRequestTime(key string) time.Time {
+	lrt, ok := c.rawLastRequestTimes.Load(key)
 	if !ok {
-		panic(fmt.Errorf("SHOULD NEVER FIND KEY IN cache BUT NOT IN listLastResponseTimes: %q", key))
+		panic(fmt.Errorf("SHOULD NEVER FIND KEY IN cache BUT NOT IN rawLastResponseTimes: %q", key))
 	}
 	return lrt.(time.Time)
 }
@@ -320,7 +283,7 @@ func (c *CachingClient) refreshBasedOnVersion() error {
 	if version > c.version {
 		cutoff := time.Unix(version, 0).Add(-c.config.stale)
 		c.expandRefreshBefore(cutoff)
-		c.listRefreshBefore(cutoff)
+		c.rawRefreshBefore(cutoff)
 		c.version = version
 	}
 	return nil
@@ -359,30 +322,31 @@ func (c *CachingClient) expandRefreshBefore(cutoff time.Time) {
 	refresher.Wait()
 }
 
-func (c *CachingClient) listRefreshBefore(cutoff time.Time) {
+func (c *CachingClient) rawRefreshBefore(cutoff time.Time) {
 	// log.Printf("refreshBefore(%d)", cutoff.Unix())
 
-	// To prevent overloading the range server with refresh requests for lots of keys at once,
-	// trickle them in one-by-one.
+	// To prevent overloading the range server with refresh requests for lots of
+	// keys at once, trickle them in one-by-one.
 	toRefresh := make(chan string, 64) // WARNING: must be at least 1 to prevent Range callback from dead locking
 	var refresher sync.WaitGroup
 	refresher.Add(1)
 	go func() {
 		for key := range toRefresh {
-			c.listCache.Update(key)
+			c.rawCache.Update(key)
 		}
 		refresher.Done()
 	}()
 
-	// Go maps and goswarm.Simple's Range method allows deleting keys while iterating over the
-	// map's key-value pairs. We'll use that to our advantage below.
-	c.listCache.Range(func(key string, tv *goswarm.TimedValue) {
+	// Go maps and goswarm.Simple's Range method allows deleting keys while
+	// iterating over the map's key-value pairs. We'll use that to our advantage
+	// below.
+	c.rawCache.Range(func(key string, tv *goswarm.TimedValue) {
 		if tv.Err != nil {
 			// log.Printf("deleting result that is an error: %q", key)
-			c.listCache.Delete(key)
-		} else if c.getListLastRequestTime(key).Before(cutoff) {
+			c.rawCache.Delete(key)
+		} else if c.getRawLastRequestTime(key).Before(cutoff) {
 			// log.Printf("dropping because last requested quite a while ago: %q", key)
-			c.listCache.Delete(key)
+			c.rawCache.Delete(key)
 		} else {
 			// log.Printf("enqueue request to update: %q", key)
 			toRefresh <- key
@@ -393,8 +357,9 @@ func (c *CachingClient) listRefreshBefore(cutoff time.Time) {
 }
 
 func (c *CachingClient) run() {
-	// If param is 0, client does not want to use the feature, so make it a very long
-	// periodicity, and when the select case is chosen, skip calling the feature.
+	// If param is 0, client does not want to use the feature, so make it a very
+	// long periodicity, and when the select case is chosen, skip calling the
+	// feature.
 	checkVersionPeriodicity := c.config.checkVersionPeriodicity
 	if checkVersionPeriodicity == 0 {
 		checkVersionPeriodicity = 24 * time.Hour
@@ -414,7 +379,7 @@ func (c *CachingClient) run() {
 			if c.config.stale > 0 {
 				cutoff := time.Now().Add(-c.config.expiry)
 				c.expandRefreshBefore(cutoff)
-				c.listRefreshBefore(cutoff)
+				c.rawRefreshBefore(cutoff)
 			}
 		case <-c.halt:
 			c.closeError <- nil
