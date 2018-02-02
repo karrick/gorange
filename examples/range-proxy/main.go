@@ -18,6 +18,7 @@ var (
 	optPort         = golf.UintP('p', "port", 8081, "port to bind to")
 	optPprof        = golf.Uint("pprof", 0, "pprof port to bind to")
 	optServers      = golf.StringP('s', "servers", "", "specify comma delimited list of range servers")
+	optTTE          = golf.DurationP('e', "tte", 12*time.Hour, "max duration prior to cache eviction")
 )
 
 func main() {
@@ -43,7 +44,7 @@ func main() {
 		Log:     os.Stderr,
 		Port:    *optPort,
 		Servers: servers,
-		Timeout: 1 * time.Minute,
-		TTE:     12 * time.Hour,
+		Timeout: 1 * time.Minute, // how long to wait for upstream to respond
+		TTE:     *optTTE,
 	}))
 }
