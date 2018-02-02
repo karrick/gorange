@@ -1,11 +1,13 @@
 package gorange
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -120,35 +122,6 @@ func newCachingClient(config *cachingClientConfig) (*CachingClient, error) {
 		return nil, err
 	}
 
-	listConfig := expandConfig
-	listConfig.Lookup = func(url string) (interface{}, error) {
-		results, err := config.querier.List(url)
-		// Check for nil before type check because it's faster, and it's the common case.
-		if err == nil {
-			return results, nil
-		}
-		if _, ok := err.(ErrRangeException); ok {
-			now := time.Now()
-			// RangeException events are cached as bad values, so library
-			// does not send the same request to other range servers.
-			return goswarm.TimedValue{
-				Value:  nil,
-				Err:    err,
-				Stale:  now.Add(badStaleDuration),
-				Expiry: now.Add(badExpiryDuration),
-			}, nil
-		}
-		// Return all non-RangeException events, including http.Get errors
-		// and ErrStatusNotOK errors, so RoundRobin will continue looking
-		// for a non-error value.
-		return nil, err
-	}
-
-	listCache, err := goswarm.NewSimple(&listConfig)
-	if err != nil {
-		return nil, err
-	}
-
 	rawConfig := expandConfig
 	rawConfig.Lookup = func(url string) (interface{}, error) {
 		iorc, err := config.querier.Raw(url)
@@ -188,11 +161,51 @@ func newCachingClient(config *cachingClientConfig) (*CachingClient, error) {
 		config:                 *config,
 		expandCache:            expandCache,
 		expandLastRequestTimes: expandLastRequestTimes,
-		listCache:              listCache,
 		listLastRequestTimes:   listLastRequestTimes,
 		rawCache:               rawCache,
 		rawLastRequestTimes:    rawLastRequestTimes,
 	}
+
+	listConfig := expandConfig
+	listConfig.Lookup = func(url string) (interface{}, error) {
+		iorc, err := c.Raw(url)
+		// Check for nil before type check because it's faster, and it's the common case.
+		if err == nil {
+			// NOTE: The CachingClient.Raw method returns a bytes buffer with a
+			// NOP closer, so we do not need to read and close it.
+			var lines []string
+			scanner := bufio.NewScanner(iorc)
+			for scanner.Scan() {
+				lines = append(lines, strings.TrimSpace(scanner.Text()))
+			}
+			if err = scanner.Err(); err != nil {
+				return nil, ErrParseException{err}
+			}
+			return lines, nil
+		}
+		if _, ok := err.(ErrRangeException); ok {
+			now := time.Now()
+			// RangeException events are cached as bad values, so library
+			// does not send the same request to other range servers.
+			return goswarm.TimedValue{
+				Value:  nil,
+				Err:    err,
+				Stale:  now.Add(badStaleDuration),
+				Expiry: now.Add(badExpiryDuration),
+			}, nil
+		}
+		// Return all non-RangeException events, including http.Get errors
+		// and ErrStatusNotOK errors, so RoundRobin will continue looking
+		// for a non-error value.
+		return nil, err
+	}
+
+	listCache, err := goswarm.NewSimple(&listConfig)
+	if err != nil {
+		return nil, err
+	}
+	c.listCache = listCache
+
 	c.halt = make(chan struct{})
 	c.closeError = make(chan error)
 	go c.run()

@@ -129,8 +129,8 @@ func (c *Client) Query(query string) ([]string, error) {
 // downstream. If the response is valid, this returns the response body as an
 // io.ReadCloser for the client to use. It is the client's responsibility to
 // invoke the Close method on the returned io.ReadCloser.
-func (c *Client) Raw(someQuery string) (io.ReadCloser, error) {
-	resp, err := c.Getter.Get("/range/list?" + url.QueryEscape(someQuery))
+func (c *Client) Raw(query string) (io.ReadCloser, error) {
+	resp, err := c.Getter.Get("/range/list?" + url.QueryEscape(query))
 	if err != nil {
 		return nil, err
 	}
