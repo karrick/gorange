@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/karrick/gogetter"
-	"github.com/karrick/gorange"
+	gogetter "github.com/karrick/gogetter/v2"
+	gorange "github.com/karrick/gorange/v2"
 )
 
 const (

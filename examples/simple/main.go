@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/karrick/gorange"
+	gorange "github.com/karrick/gorange/v2"
 )
 
 func main() {

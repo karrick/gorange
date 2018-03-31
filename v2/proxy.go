@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/karrick/gohm"
+	gohm "github.com/karrick/gohm/v2"
 )
 
 var errorCount = expvar.NewInt("errorCount")

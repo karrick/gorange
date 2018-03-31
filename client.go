@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/karrick/gogetter"
@@ -14,95 +15,6 @@ import (
 // Client attempts to resolve range queries to a list of strings or an error.
 type Client struct {
 	Getter gogetter.Getter
-}
-
-// Close returns nil error.
-func (c *Client) Close() error {
-	return nil
-}
-
-// Expand sends the specified query string to the Client's Getter, and converts a non-error result
-// into a slice of bytes.
-//
-// If the response includes a RangeException header, it returns ErrRangeException. If the status
-// code is not okay, it returns ErrStatusNotOK. Finally, if it cannot parse the lines in the
-// response body, it returns ErrParseException.
-//
-//	// use the range querier
-//	result, err := querier.Expand("%someQuery")
-//	if err != nil {
-//		fmt.Fprintf(os.Stderr, "%s", err)
-//		os.Exit(1)
-//	}
-//	fmt.Printf("%s\n", result)
-func (c *Client) Expand(query string) (string, error) {
-	resp, err := c.Getter.Get("/range/expand?" + url.QueryEscape(query))
-	if err != nil {
-		return "", err
-	}
-
-	// got a response from this server, so commit to reading entire body (needed when re-using
-	// Keep-Alive connections)
-	defer func(iorc io.ReadCloser) {
-		io.Copy(ioutil.Discard, iorc) // so we can reuse connections via Keep-Alive
-		iorc.Close()
-	}(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		return "", ErrStatusNotOK{resp.Status, resp.StatusCode}
-	}
-	if rangeException := resp.Header.Get("RangeException"); rangeException != "" {
-		return "", ErrRangeException{rangeException}
-	}
-
-	bb, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	return string(bb), nil
-}
-
-// List sends the specified query string to the Client's Getter, and converts a non-error result
-// into a list of strings.
-//
-// If the response includes a RangeException header, it returns ErrRangeException. If the status
-// code is not okay, it returns ErrStatusNotOK. Finally, if it cannot parse the lines in the
-// response body, it returns ErrParseException.
-//
-//	// use the range querier
-//	list, err := querier.List("%someQuery")
-//	if err != nil {
-//		fmt.Fprintf(os.Stderr, "%s", err)
-//		os.Exit(1)
-//	}
-//	for _, line := range list {
-//		fmt.Println(line)
-//	}
-func (c *Client) List(query string) ([]string, error) {
-	iorc, err := c.Raw(query)
-	if err != nil {
-		return nil, err
-	}
-
-	// got a response from this server, so commit to reading entire body (needed
-	// when re-using Keep-Alive connections)
-	defer func(iorc io.ReadCloser) {
-		_, _ = io.Copy(ioutil.Discard, iorc) // so we can reuse connections via Keep-Alive
-		_ = iorc.Close()
-	}(iorc)
-
-	var lines []string
-
-	scanner := bufio.NewScanner(iorc)
-	for scanner.Scan() {
-		lines = append(lines, strings.TrimSpace(scanner.Text()))
-	}
-
-	if err = scanner.Err(); err != nil {
-		return nil, ErrParseException{err}
-	}
-
-	return lines, nil
 }
 
 // Query sends the specified query string to the Client's Getter, and converts a non-error result
@@ -122,25 +34,39 @@ func (c *Client) List(query string) ([]string, error) {
 //		fmt.Println(line)
 //	}
 func (c *Client) Query(query string) ([]string, error) {
-	return c.List(query)
-}
-
-// Raw sends the range request and checks for invalid responses from
-// downstream. If the response is valid, this returns the response body as an
-// io.ReadCloser for the client to use. It is the client's responsibility to
-// invoke the Close method on the returned io.ReadCloser.
-func (c *Client) Raw(query string) (io.ReadCloser, error) {
-	resp, err := c.Getter.Get("/range/list?" + url.QueryEscape(query))
+	resp, err := c.Getter.Get(url.QueryEscape(query))
 	if err != nil {
 		return nil, err
+	}
+
+	// got a response from this server, so commit to reading entire body (needed when re-using
+	// Keep-Alive connections)
+	defer func(iorc io.ReadCloser) {
+		io.Copy(ioutil.Discard, iorc) // so we can reuse connections via Keep-Alive
+		iorc.Close()
+	}(resp.Body)
+
+	// NOTE: wrap known range exceptions
+	rangeException := resp.Header.Get("RangeException")
+	if rangeException != "" {
+		return nil, ErrRangeException{rangeException}
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, ErrStatusNotOK{resp.Status, resp.StatusCode}
 	}
-	if rangeException := resp.Header.Get("RangeException"); rangeException != "" {
-		return nil, ErrRangeException{rangeException}
+
+	var lines []string
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		lines = append(lines, strings.TrimSpace(scanner.Text()))
 	}
-	return resp.Body, nil
+
+	if err = scanner.Err(); err != nil {
+		return nil, ErrParseException{err}
+	}
+
+	return lines, nil
 }
 
 // ErrRangeException is returned when the response headers includes 'RangeException'.
@@ -159,7 +85,7 @@ type ErrStatusNotOK struct {
 }
 
 func (err ErrStatusNotOK) Error() string {
-	return err.Status
+	return "response status code: " + strconv.Itoa(err.StatusCode)
 }
 
 // ErrParseException is returned by Client.Query method when an error occurs while parsing the Get

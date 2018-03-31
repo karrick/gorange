@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/karrick/golf"
-	"github.com/karrick/gorange"
+	gorange "github.com/karrick/gorange/v2"
 )
 
 var (
