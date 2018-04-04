@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/karrick/gorill"
 	"github.com/karrick/goswarm"
 )
 
@@ -248,7 +247,7 @@ func (c *CachingClient) Raw(query string) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("cannot convert %T to []byte", raw)
 	}
 	// Convert the []byte to an io.ReadCloser
-	return gorill.NopCloseReader(bytes.NewBuffer(results)), nil
+	return ioutil.NopCloser(bytes.NewBuffer(results)), nil
 }
 
 func (c CachingClient) getRawLastRequestTime(key string) time.Time {
