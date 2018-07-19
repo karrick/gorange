@@ -8,6 +8,8 @@ import (
 	"github.com/karrick/gogetter"
 )
 
+// DefaultQueryTimeout is the default timeout for outgoing queries to the range
+// server.
 const DefaultQueryTimeout = 3 * time.Second
 
 // Querier interface is minimal library abstraction for submitting a query and receiving a response.
