@@ -35,7 +35,7 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// Query sends the specified query string to one or more of the configured
+// Query sends the specified expression to one or more of the configured range
 // servers, and converts a non-error result into a list of strings.
 //
 // If the response includes a RangeException header, it returns
@@ -45,14 +45,14 @@ func (c *Client) Close() error {
 //
 //     lines, err := querier.Query("%someQuery")
 //     if err != nil {
-//         fmt.Fprintf(os.Stderr, "%s", err)
+//         fmt.Fprintf(os.Stderr, "ERROR: %s", err)
 //         os.Exit(1)
 //     }
 //     for _, line := range lines {
 //         fmt.Println(line)
 //     }
-func (rq *Client) Query(expression string) ([]string, error) {
-	iorc, err := rq.getFromRangeServers(expression)
+func (c *Client) Query(expression string) ([]string, error) {
+	iorc, err := c.getFromRangeServers(expression)
 	if err != nil {
 		return nil, err
 	}
@@ -81,16 +81,16 @@ func (rq *Client) Query(expression string) ([]string, error) {
 // query to each server, one after the other, until a non-error result is
 // obtained. It returns an io.ReadCloser for reading the HTTP response body, or
 // an error when all the servers return an error for that query.
-func (rq *Client) getFromRangeServers(expression string) (io.ReadCloser, error) {
+func (c *Client) getFromRangeServers(expression string) (io.ReadCloser, error) {
 	var attempts int
 	for {
-		iorc, err := rq.getFromRangeServer(expression)
-		if err == nil || attempts == rq.retryCount || rq.retryCallback(err) == false {
+		iorc, err := c.getFromRangeServer(expression)
+		if err == nil || attempts == c.retryCount || c.retryCallback(err) == false {
 			return iorc, err
 		}
 		attempts++
-		if rq.retryPause > 0 {
-			time.Sleep(rq.retryPause)
+		if c.retryPause > 0 {
+			time.Sleep(c.retryPause)
 		}
 	}
 }
@@ -101,11 +101,14 @@ func (rq *Client) getFromRangeServers(expression string) (io.ReadCloser, error) 
 // defaults to using GET first, then trying PUT, unless the query length is
 // longer than a program constant, in which case it first tries PUT then will
 // try GET.
-func (rq *Client) getFromRangeServer(expression string) (io.ReadCloser, error) {
-	var err error
+func (c *Client) getFromRangeServer(expression string) (io.ReadCloser, error) {
+	var err, herr error
 	var response *http.Response
 
-	endpoint := fmt.Sprintf("http://%s/range/list", rq.servers.Next())
+	// need endpoint for both GET and PUT, so keep it separate
+	endpoint := fmt.Sprintf("http://%s/range/list", c.servers.Next())
+
+	// need uri for just GET
 	uri := fmt.Sprintf("%s?%s", endpoint, url.QueryEscape(expression))
 
 	// Default to using GET request because most servers support it. However,
@@ -117,15 +120,13 @@ func (rq *Client) getFromRangeServer(expression string) (io.ReadCloser, error) {
 		method = http.MethodGet
 	}
 
-	var herr error
-
 	// At least 2 tries so we can try GET or POST if server gives us 405 or 414.
 	for triesRemaining := 2; triesRemaining > 0; triesRemaining-- {
 		switch method {
 		case http.MethodGet:
-			response, err = rq.httpClient.Get(uri)
+			response, err = c.httpClient.Get(uri)
 		case http.MethodPut:
-			response, err = rq.putQuery(endpoint, expression)
+			response, err = c.putQuery(endpoint, expression)
 		default:
 			panic(fmt.Errorf("cannot use unsupported HTTP method: %q", method))
 		}
@@ -165,14 +166,14 @@ func (rq *Client) getFromRangeServer(expression string) (io.ReadCloser, error) {
 	return nil, herr
 }
 
-func (rq *Client) putQuery(endpoint, query string) (*http.Response, error) {
-	form := url.Values{"query": []string{query}}
+func (c *Client) putQuery(endpoint, expression string) (*http.Response, error) {
+	form := url.Values{"query": []string{expression}}
 	request, err := http.NewRequest(http.MethodPut, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
 	}
 	request.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	return rq.httpClient.Do(request)
+	return c.httpClient.Do(request)
 }
 
 // ErrRangeException is returned when the response headers includes

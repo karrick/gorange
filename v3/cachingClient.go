@@ -72,32 +72,32 @@ func newCachingClient(ccc cachingClientConfig) (*CachingClient, error) {
 		GCPeriodicity:      gcPeriodicity,
 		Lookup: func(expression string) (interface{}, error) {
 			someStrings, err := ccc.client.Query(expression)
-			if err != nil {
-				if _, ok := err.(ErrRangeException); ok {
-					// ErrRangeException events are cached as bad values, so
-					// library does not send the same request to other range
-					// servers.
-					now := time.Now()
-					return goswarm.TimedValue{
-						Value:  nil,
-						Err:    err,
-						Stale:  now.Add(badStaleDuration),
-						Expiry: now.Add(badExpiryDuration),
-					}, nil
-				}
+			if err == nil {
+				return someStrings, nil
+			}
+			if _, ok := err.(ErrRangeException); !ok {
 				// Return all non-RangeException events, including http.Get
 				// errors and ErrStatusNotOK errors, so will continue looking
 				// for a non-error value.
 				return nil, err
 			}
-			return someStrings, nil
+			// ErrRangeException events are cached as bad values, so library
+			// does not send the same request to other range servers.
+			now := time.Now()
+			tv := goswarm.TimedValue{
+				Value:  nil,
+				Err:    err,
+				Stale:  now.Add(badStaleDuration),
+				Expiry: now.Add(badExpiryDuration),
+			}
+			return tv, nil
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	c := &CachingClient{
+	cc := &CachingClient{
 		cache:            expandCache,
 		closeError:       make(chan error),
 		config:           ccc,
@@ -105,21 +105,21 @@ func newCachingClient(ccc cachingClientConfig) (*CachingClient, error) {
 		lastRequestTimes: lastRequestTimes,
 	}
 
-	go c.run()
-	return c, nil
+	go cc.run()
+	return cc, nil
 }
 
 // Close releases all memory and go-routines used by the Simple swarm. If during
 // instantiation, checkVersionPeriodicty was greater than the zero-value for
 // time.Duration, this method may block while completing any in progress updates
 // due to `%version` changes.
-func (c *CachingClient) Close() error {
-	close(c.halt)
+func (cc *CachingClient) Close() error {
+	close(cc.halt)
 
 	// Wait for run() loop to acknowledge signal that it's complete
-	err := <-c.closeError
+	err := <-cc.closeError
 
-	if cerr := c.cache.Close(); err == nil {
+	if cerr := cc.cache.Close(); err == nil {
 		err = cerr
 	}
 
@@ -127,7 +127,8 @@ func (c *CachingClient) Close() error {
 }
 
 // Query returns the response of the query, first checking in the TTL cache,
-// then by actually invoking the Expand method on the underlying Querier.
+// then by actually sending a query to one or more of the configured range
+// servers.
 //
 // If the response includes a RangeException header, it returns
 // ErrRangeException.  If the status code is not okay, it returns
@@ -136,15 +137,15 @@ func (c *CachingClient) Close() error {
 //
 //     lines, err := querier.Query("%someQuery")
 //     if err != nil {
-//         fmt.Fprintf(os.Stderr, "%s", err)
+//         fmt.Fprintf(os.Stderr, "ERROR: %s", err)
 //         os.Exit(1)
 //     }
 //     for _, line := range lines {
 //         fmt.Println(line)
 //     }
-func (c *CachingClient) Query(expression string) ([]string, error) {
-	c.lastRequestTimes.Store(expression, time.Now())
-	someValue, err := c.cache.Query(expression)
+func (cc *CachingClient) Query(expression string) ([]string, error) {
+	cc.lastRequestTimes.Store(expression, time.Now())
+	someValue, err := cc.cache.Query(expression)
 	if err != nil {
 		return nil, err
 	}
@@ -155,16 +156,16 @@ func (c *CachingClient) Query(expression string) ([]string, error) {
 	return someStrings, nil
 }
 
-func (c CachingClient) lastRequestTime(key string) time.Time {
-	lrt, ok := c.lastRequestTimes.Load(key)
+func (cc *CachingClient) lastRequestTime(key string) time.Time {
+	lrt, ok := cc.lastRequestTimes.Load(key)
 	if !ok {
 		panic(fmt.Errorf("SHOULD NEVER FIND KEY IN cache BUT NOT IN lastRequestTimes: %q", key))
 	}
 	return lrt.(time.Time)
 }
 
-func (c *CachingClient) refreshBasedOnVersion() error {
-	someStrings, err := c.config.client.Query("%version")
+func (cc *CachingClient) refreshBasedOnVersion() error {
+	someStrings, err := cc.config.client.Query("%version")
 	if err != nil {
 		return err
 	}
@@ -176,15 +177,15 @@ func (c *CachingClient) refreshBasedOnVersion() error {
 	if err != nil {
 		return err
 	}
-	if version > c.version {
-		cutoff := time.Unix(version, 0).Add(-c.config.stale)
-		c.refreshBefore(cutoff)
-		c.version = version
+	if version > cc.version {
+		cutoff := time.Unix(version, 0).Add(-cc.config.stale)
+		cc.refreshBefore(cutoff)
+		cc.version = version
 	}
 	return nil
 }
 
-func (c *CachingClient) refreshBefore(cutoff time.Time) {
+func (cc *CachingClient) refreshBefore(cutoff time.Time) {
 	// To prevent overloading the range server with refresh requests for lots of
 	// keys at once, trickle them in one-by-one.
 	toRefresh := make(chan string, 64) // WARNING: must be at least 1 to prevent Range callback from dead locking
@@ -194,19 +195,19 @@ func (c *CachingClient) refreshBefore(cutoff time.Time) {
 	go func() {
 		defer refresher.Done()
 		for key := range toRefresh {
-			c.cache.Update(key)
+			cc.cache.Update(key)
 		}
 	}()
 
 	// Go maps and goswarm.Simple's Range method allows deleting keys while iterating over the
 	// map's key-value pairs.  We'll use that to our advantage below.
-	c.cache.Range(func(key string, tv *goswarm.TimedValue) {
+	cc.cache.Range(func(key string, tv *goswarm.TimedValue) {
 		if tv.Err != nil {
 			// log.Printf("deleting result that is an error: %q", key)
-			c.cache.Delete(key)
-		} else if c.lastRequestTime(key).Before(cutoff) {
+			cc.cache.Delete(key)
+		} else if cc.lastRequestTime(key).Before(cutoff) {
 			// log.Printf("dropping because last requested quite a while ago: %q", key)
-			c.cache.Delete(key)
+			cc.cache.Delete(key)
 		} else {
 			// log.Printf("enqueue request to update: %q", key)
 			toRefresh <- key
@@ -216,16 +217,16 @@ func (c *CachingClient) refreshBefore(cutoff time.Time) {
 	refresher.Wait()
 }
 
-func (c *CachingClient) run() {
+func (cc *CachingClient) run() {
 	// If param is 0, client does not want to use the feature, so make it a very
 	// long periodicity, and when the select case is chosen, skip calling the
 	// feature.
-	checkVersionPeriodicity := c.config.checkVersionPeriodicity
+	checkVersionPeriodicity := cc.config.checkVersionPeriodicity
 	if checkVersionPeriodicity == 0 {
 		// long enough that we do not care about cycles that do a no-op
 		checkVersionPeriodicity = 24 * time.Hour
 	}
-	stale := c.config.stale
+	stale := cc.config.stale
 	if stale == 0 {
 		// long enough that we do not care about cycles that do a no-op
 		stale = 24 * time.Hour
@@ -234,16 +235,16 @@ func (c *CachingClient) run() {
 	for {
 		select {
 		case <-time.After(checkVersionPeriodicity):
-			if c.config.checkVersionPeriodicity > 0 {
-				_ = c.refreshBasedOnVersion() // ignoring error return value
+			if cc.config.checkVersionPeriodicity > 0 {
+				_ = cc.refreshBasedOnVersion() // ignoring error return value
 			}
 		case <-time.After(stale):
-			if c.config.stale > 0 {
-				cutoff := time.Now().Add(-c.config.expiry)
-				c.refreshBefore(cutoff)
+			if cc.config.stale > 0 {
+				cutoff := time.Now().Add(-cc.config.expiry)
+				cc.refreshBefore(cutoff)
 			}
-		case <-c.halt:
-			c.closeError <- nil
+		case <-cc.halt:
+			cc.closeError <- nil
 			// there is no cleanup required, so we just return
 			return
 		}
