@@ -35,9 +35,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s\n", filepath.Base(os.Args[0]))
 		if *optHelp {
 			fmt.Fprintf(os.Stderr, "\trun a reverse proxy against one or more range servers\n\n")
-			fmt.Fprintf(os.Stderr, "For bug reports or feature requests:\n")
-			fmt.Fprintf(os.Stderr, "\t* ask about `range-proxy` in #golang\n")
-			fmt.Fprintf(os.Stderr, "\t* send email to govt@linkedin.com\n\n")
 			golf.Usage()
 		}
 		os.Exit(0)
