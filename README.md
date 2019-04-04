@@ -24,7 +24,8 @@ In any event, this library
 
 1. guarantees HTTP connections can be re-used by always reading all
    body bytes if the Get succeeded.
-1. detects and parses the RangeException header, so you don't have to.
+1. detects and parses the RangeException header, returning any error
+   message encoded therein.
 1. converts response body to slice of strings.
 
 There are four possible error types this library returns:
@@ -40,14 +41,12 @@ There are four possible error types this library returns:
 
 The first version of this library is at the top-level of this
 repository, available for software to build against, but no longer
-supported. Clients of this library ought consider updating to version
-two of the interface, located in the `v2` subdirectory. All the below
-examples along with the programs in the `examples` subdirectory are
-built with v2 of this library.
-
-Both the v1 and v2 versions of this library can be built using either
-the version agnostic go build tools, or the version sensitive go build
-tools.
+supported.  The second version of this library was a lot more
+ambitious, and the API got too big, so the third version of this
+library is my preferred version.  Clients of this library ought
+consider updating to version two of the interface, located in the `v3`
+subdirectory. All the below examples along with the programs in the
+`examples` subdirectory are built with v3 of this library.
 
 ### Supported Use Cases
 
@@ -76,7 +75,7 @@ to query range.
     	"os"
     	"time"
     
-    	gorange "github.com/karrick/gorange/v2"
+    	gorange "github.com/karrick/gorange/v3"
     )
     
     func main() {
@@ -130,14 +129,13 @@ code, including constants and functions not shown here.
     	"os"
     	"time"
     
-    	gorange "github.com/karrick/gorange/v2"
+    	gorange "github.com/karrick/gorange/v3"
     )
 
     func main() {
     	servers := []string{"range1.example.com", "range2.example.com", "range3.example.com"}
     
     	config := &gorange.Configurator{
-    		Addr2Getter:             addr2Getter,
     		RetryCount:              len(servers),
     		Servers:                 servers,
     		CheckVersionPeriodicity: 15 * time.Second,
@@ -165,61 +163,6 @@ code, including constants and functions not shown here.
     	}
     	if err := scanner.Err(); err != nil {
     		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
-    	}
-    }
-```
-
-##### Bit-Twiddling Tweaking Capabilities
-
-While using the `NewQuerier` method is fine for most use-cases, there
-are times when you might need to create your own querying pipeline. If
-you have a `Get` method that matches the http.Client `Get` method's
-signature that you'd like to inject in the pipeline, you can build
-your own Querier by composing the functionality you need for your
-application.
-
-How to do this is illustrated by the `NewQuerier` function in this
-library, but a simple example is shown below. Note that the example
-code simply wraps `gogetter.Getter` instances around other
-`gogetter.Getter` instances.
-
-NOTE: A `gogetter.Prefixer` is needed to prepend the server name and
-URL route to each URL before the URL is sent to the underlying
-`http.Client`'s `Get` method.
-
-WARNING: Using http.Client instance without a `Timeout` will cause
-resource leaks and may render your program inoperative if the client
-connects to a buggy range server, or over a poor network connection.
-
-```Go
-    import (
-    	"fmt"
-    	"net/http"
-    	"os"
-    	"time"
-    
-    	gorange "github.com/karrick/gorange/v2"
-    )
-
-    func main() {
-        // create a range client
-    	server := "range.example.com"
-    	querier := &gorange.Client{
-    		&gogetter.Prefixer{
-    			Prefix: fmt.Sprintf("http://%s/range/list?", server),
-
-    			Getter: &http.Client{Timeout: 5 * time.Second}, // don't forget the Timeout...
-    		},
-    	}
-    
-        // use the range querier
-    	lines, err := querier.Query("%someQuery")
-    	if err != nil {
-    		fmt.Fprintf(os.Stderr, "%s", err)
-    		os.Exit(1)
-    	}
-    	for _, line := range lines {
-    		fmt.Println(line)
     	}
     }
 ```

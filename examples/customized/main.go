@@ -3,13 +3,10 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"net"
-	"net/http"
 	"os"
 	"time"
 
-	gogetter "github.com/karrick/gogetter/v2"
-	gorange "github.com/karrick/gorange/v2"
+	gorange "github.com/karrick/gorange/v3"
 )
 
 const (
@@ -24,7 +21,6 @@ func main() {
 	servers := []string{"range1.example.com", "range2.example.com", "range3.example.com"}
 
 	config := &gorange.Configurator{
-		Addr2Getter:             addr2Getter,
 		RetryCount:              len(servers),
 		Servers:                 servers,
 		CheckVersionPeriodicity: 15 * time.Second,
@@ -52,25 +48,5 @@ func main() {
 	}
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
-	}
-}
-
-func addr2Getter(addr string) gogetter.Getter {
-	return &gogetter.Prefixer{
-		Prefix: fmt.Sprintf("http://%s/range/list?", addr),
-		Getter: &http.Client{
-			// WARNING: Using http.Client instance without a Timeout will cause resource
-			// leaks and may render your program inoperative if the client connects to a
-			// buggy range server, or over a poor network connection.
-			Timeout: time.Duration(queryTimeout),
-
-			Transport: &http.Transport{
-				Dial: (&net.Dialer{
-					Timeout:   dialTimeout,
-					KeepAlive: keepAliveDuration,
-				}).Dial,
-				MaxIdleConnsPerHost: int(maxIdleConnections),
-			},
-		},
 	}
 }

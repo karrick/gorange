@@ -6,11 +6,12 @@ import (
 	"os"
 	"time"
 
-	gorange "github.com/karrick/gorange/v2"
+	gorange "github.com/karrick/gorange/v3"
 )
 
 func main() {
-	// create a range querier; could list additional servers or include other options as well
+	// create a range querier; could list additional servers or include other
+	// options as well
 	querier, err := gorange.NewQuerier(&gorange.Configurator{
 		CheckVersionPeriodicity: 15 * time.Second,
 		Servers:                 []string{"range.example.com"},

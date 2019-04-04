@@ -16,7 +16,7 @@ import (
 
 	gohm "github.com/karrick/gohm/v2"
 	"github.com/karrick/golf"
-	gorange "github.com/karrick/gorange/v2"
+	gorange "github.com/karrick/gorange/v3"
 )
 
 var (
@@ -61,11 +61,11 @@ func main() {
 
 	log.Fatal(Proxy(ProxyConfig{
 		CheckVersionPeriodicity: *optCheckVersion,
-		Log:     os.Stderr,
-		Port:    *optPort,
-		Servers: servers,
-		Timeout: 1 * time.Minute, // how long to wait for downstream to respond
-		TTE:     *optTTE,
+		Log:                     os.Stderr,
+		Port:                    *optPort,
+		Servers:                 servers,
+		Timeout:                 1 * time.Minute, // how long to wait for downstream to respond
+		TTE:                     *optTTE,
 	}))
 }
 
@@ -73,41 +73,47 @@ var errorCount = expvar.NewInt("errorCount")
 
 // ProxyConfig specifies the configuration for a gorange proxy HTTP server.
 type ProxyConfig struct {
-	// CheckVersionPeriodicity directs the range proxy to periodically send the '%version' query
-	// the proxied range servers, and if the value is greater than the previous value, to
-	// asynchronously update all the values for recently used range keys.
+	// CheckVersionPeriodicity directs the range proxy to periodically send the
+	// '%version' query the proxied range servers, and if the value is greater
+	// than the previous value, to asynchronously update all the values for
+	// recently used range keys.
 	CheckVersionPeriodicity time.Duration
 
-	// Log directs the proxy to emit common log formatted log lines to the specified io.Writer.
+	// Log directs the proxy to emit common log formatted log lines to the
+	// specified io.Writer.
 	Log io.Writer
 
-	// LogFormat specifies the log format to use when Log is not nil.  See `gohm` package for
-	// LogFormat specifications.  If left blank, uses `gohm.DefaultLogFormat`.
+	// LogFormat specifies the log format to use when Log is not nil.  See
+	// `gohm` package for LogFormat specifications.  If left blank, uses
+	// `gohm.DefaultLogFormat`.
 	LogFormat string
 
 	// Port specifies which network port the proxy should bind to.
 	Port uint
 
-	// Servers specifies which addresses ought to be consulted as the source of truth for range
-	// queries.
+	// Servers specifies which addresses ought to be consulted as the source of
+	// truth for range queries.
 	Servers []string
 
-	// Timeout specifies how long to wait for the source of truth to respond. If the zero-value,
-	// no timeout will be used. Not having a timeout value may cause resource exhaustion where
-	// any of the proxied servers take too long to return a response.
+	// Timeout specifies how long to wait for the source of truth to respond. If
+	// the zero-value, no timeout will be used. Not having a timeout value may
+	// cause resource exhaustion where any of the proxied servers take too long
+	// to return a response.
 	Timeout time.Duration
 
-	// TTE is duration of time before cached response is no longer able to be served, even if
-	// attempts to fetch new value repeatedly fail.  This value should be large if your application
-	// needs to still operate even when range servers are down.  A zero-value for this implies that
-	// values never expire and can continue to be served.  TTE and CheckVersionPeriodicity work
-	// together to prevent frequently needlessly asking servers for information that is still
-	// current while preventing heap build-up on clients.
+	// TTE is duration of time before cached response is no longer able to be
+	// served, even if attempts to fetch new value repeatedly fail.  This value
+	// should be large if your application needs to still operate even when
+	// range servers are down.  A zero-value for this implies that values never
+	// expire and can continue to be served.  TTE and CheckVersionPeriodicity
+	// work together to prevent frequently needlessly asking servers for
+	// information that is still current while preventing heap build-up on
+	// clients.
 	TTE time.Duration
 }
 
-// Proxy creates a proxy http server on the port that proxies range queries to the specified range
-// servers.
+// Proxy creates a proxy http server on the port that proxies range queries to
+// the specified range servers.
 func Proxy(config ProxyConfig) error {
 	querier, err := gorange.NewQuerier(&gorange.Configurator{
 		CheckVersionPeriodicity: config.CheckVersionPeriodicity,
@@ -120,8 +126,8 @@ func Proxy(config ProxyConfig) error {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/range/expand", onlyGet(decodeURI(expand(querier))))
-	mux.Handle("/range/list", onlyGet(decodeURI(list(querier))))
+	mux.Handle("/range/expand", onlyGet(decodeURI(expand(querier, ","))))
+	mux.Handle("/range/list", onlyGet(decodeURI(expand(querier, "\n"))))
 	mux.Handle("/", notFound()) // while not required, this makes for a nicer log output and client response
 
 	logBitmask := gohm.LogStatusErrors
@@ -183,35 +189,25 @@ func decodeURI(next http.Handler) http.Handler {
 	})
 }
 
-func expand(querier gorange.Querier) http.Handler {
+func expand(querier gorange.Querier, delim string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		query := queryFromContext(r.Context())
-		response, err := querier.Expand(query)
+		results, err := querier.Query(query)
 		if err != nil {
 			gohm.Error(w, "cannot resolve query: "+err.Error(), http.StatusBadGateway)
 			return
 		}
-		if _, err = io.WriteString(w, response); err != nil {
-			gohm.Error(w, "cannot write response: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-	})
-}
-
-func list(querier gorange.Querier) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		query := queryFromContext(r.Context())
-		iorc, err := querier.Raw(query)
-		if err != nil {
-			gohm.Error(w, "cannot resolve query: "+err.Error(), http.StatusBadGateway)
-			return
-		}
-		_, err = io.Copy(w, iorc)
-		if err2 := iorc.Close(); err == nil {
-			err = err2
-		}
-		if err != nil {
-			gohm.Error(w, "cannot write response: "+err.Error(), http.StatusInternalServerError)
+		l := len(results)
+		for i, result := range results {
+			if i < l {
+				result += delim
+			} else {
+				result += "\n"
+			}
+			if _, err = io.WriteString(w, result); err != nil {
+				gohm.Error(w, "cannot write response: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 	})
 }
