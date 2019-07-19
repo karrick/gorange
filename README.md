@@ -2,6 +2,18 @@
 
 gorange is a small Go library for interacting with range servers.
 
+## DEPRECATED
+
+I no longer use or maintain this library, but rather use the
+[orange](https://github.com/karrick/orange) library, which is a
+simplified version of this library with no transitive dependencies.
+Most of the improvements in
+[orange](https://github.com/karrick/orange) are also in the `v3`
+version of this library, however the `v3` version provides a response
+caching server, which was specifically not included in
+[orange](https://github.com/karrick/orange) to be able to use a
+library with no transititive dependencies.
+
 ### Usage
 
 Documentation is available via
